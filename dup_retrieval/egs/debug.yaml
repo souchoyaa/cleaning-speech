@@ -1,0 +1,80 @@
+# Debug / smoke-test config for dup_retrieval.
+# Single shar, single node, all knobs aggressive enough that the pipeline
+# completes in minutes on ~10k cuts.
+
+shar_dirs:
+  - /users/sgodey/shared/SHAR/stage_2/granary_ytc/en
+
+output_dir: /scratch/dedup_debug/
+dataset_root: /users/sgodey/shared/SHAR
+
+target_sample_rate: 16000
+max_batch_duration: 600.0
+num_buckets:        10
+bucket_buffer_size: 5000
+decode_num_workers: 8
+prefetch_factor:    4
+truncate_secs:      30.0
+
+manifest:
+  inner_workers:    8
+  min_text_chars:   4
+  drop_empty_text:  true
+
+text_dedup:
+  backend:                  cudf     # cudf = single-GPU; dask_cudf = multi-GPU
+  gpu_verify_chunk:         2000000
+  ngram_size:               12       # smaller for short transcripts in debug
+  num_permutations:         128
+  num_bands:                16
+  band_width:               8
+  jaccard_threshold:        0.80
+  small_bucket_threshold:   100
+  max_bucket_size:          2000
+  use_cudf:                 false
+  use_cugraph:              false
+  minhash_chunk_size:       1_000_000
+  candidate_fraction_max:   0.50      # looser for tiny test corpora
+  save_candidate_edges:     true      # see edges in debug
+  refine_chains:            false
+  seed:                     1
+
+audio_fingerprint:
+  mel_n_bins:        64
+  mel_f_min:         200
+  mel_f_max:         3000
+  mel_frame_rate:    40
+  hash_frame_rate:   12.5
+  m_frames:          4
+  M_frames:          20
+  time_window:       9
+  energy_factor:     1.0
+
+audio_match:
+  min_keypoints:        4
+  match_min_abs:        4
+  match_frac:           0.30
+  min_relative_match:   0.30
+  hist_tolerance:       1      # ±1 frame (~80ms) absorbs codec/resample timing jitter (B1)
+  small_cluster_max:    100
+  huge_cluster_max:     1000
+  pre_filter_min_shared: 4
+  workers:              8
+  save_match_edges:     true   # see edges in debug
+
+retention:
+  quality_schema: quality_v1
+  # Weights apply to z-scored axes (retention._norm_score); DNSMOS >= UTMOS
+  # (strongest single discriminator). AudioBox OVL excludes PC (a descriptor).
+  weights: {utmos: 0.30, dnsmos: 0.40, audiobox: 0.20, rover: 0.10, language: 0.00}
+  dnsmos_variant: nisqa
+  max_cluster_size: 20             # text-cluster size cap (selection stage); null disables
+  per_dataset_quality_floor: {}    # learn from data via quality_floor_suggester
+  preferred_dataset_order: []
+
+apply_to_shar:
+  enabled:         false
+  output_shar_dir: /scratch/dedup_debug/output_shar
+  link_mode:       symlink
+  in_place:        false
+  workers:         8

@@ -1,0 +1,41 @@
+# pipeline/egs/cv_fr.yaml — single-language pipeline (CV-FR train).
+#
+# Modularity:
+#   - Flip ``stages.<name>.enabled: false`` to skip a stage.
+#   - Or override at run-time:  bash launch.sh --stages parakeet,qwen
+#     (runs only those two, ignores enabled flags).
+#
+# Each stage's `config` is the YAML for that component (relative to
+# <quality_metrics_enrichment> or absolute). Stage runners delegate to
+# the component's existing launch.sh, so all per-component knobs
+# (sbatch reservation, walltime, vLLM model, …) live there unchanged.
+
+stages:
+
+  parakeet:
+    enabled: true
+    config:  "asr_parakeet/egs/cv_fr.yaml"
+    # Use ``configs: [a.yaml, b.yaml]`` to submit multiple sbatch jobs in
+    # sequence (one per config). Useful for running several datasets in
+    # one orchestrator invocation.
+
+  canary:
+    enabled: true
+    config:  "asr_canary/egs/cv_fr.yaml"
+
+  qwen:
+    enabled: true
+    config:  "asr_vllm/egs/cv_fr_qwen3_asr.yaml"
+    # vllm_mode:
+    #   mode_a (default): spin up a new vLLM via sml, wait for /health,
+    #                     then feed. Use for one-shot runs.
+    #   mode_b:           skip the sml submit, auto-discover a RUNNING
+    #                     sml job by squeue. Use when one vLLM server
+    #                     fronts multiple language runs back-to-back.
+    vllm_mode: "mode_a"
+    # Multi-config example (overrides ``config`` above when set):
+    # configs:
+    #   - "asr_vllm/egs/cv_fr_qwen3_asr.yaml"
+    #   - "asr_vllm/egs/cv_de_qwen3_asr.yaml"
+    # First config uses ``vllm_mode``; subsequent ones automatically use
+    # mode_b (reuse the vLLM server brought up by the first feed).

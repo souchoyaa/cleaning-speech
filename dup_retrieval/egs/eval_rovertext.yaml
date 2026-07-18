@@ -1,0 +1,113 @@
+# Experiment: cluster the fuzzy-text dedup on the ROVER consensus transcript
+# (manifest.text_source=rover) instead of the original transcript, to catch
+# text_slight_change (same audio, edited transcript).  Identical audio -> same
+# reference-independent ASR consensus -> same dedup key, so the slight-edit pairs
+# land in one text cluster (which the original transcript split).
+#
+# Writes to a SEPARATE output_dir so it does NOT override the baseline run.
+# fingerprints are audio-only, so the run reuses the baseline ones via a symlink
+# (see the run script); only manifest + text/audio clustering + retention re-run.
+
+shar_dirs:
+  - /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/en
+dataset_overrides:
+  /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/en: mos
+
+output_dir: /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/dedup_out_rovertext
+
+target_sample_rate: 16000
+max_batch_duration: 1500.0
+num_buckets:        20
+bucket_buffer_size: 10000
+decode_num_workers: 8
+prefetch_factor:    4
+truncate_secs:      30.0
+
+# ----- Stage A — manifest: cluster on the ROVER consensus, not the original ---
+manifest:
+  inner_workers:         4         # each worker parses the rover JSONL once; keep low
+  min_text_chars:        4
+  drop_empty_text:       true
+  strip_punctuation:     true
+  text_source:           rover     # supervision (default) | rover
+  rover_text_field:      text      # text (ref-independent) | text_enhanced | text_enhanced_itn
+  rover_text_path:       /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/quality/quality_asr/rover/merged.jsonl
+
+text_dedup:
+  backend:                  cudf
+  ngram_size:               16
+  num_permutations:         260
+  num_bands:                20
+  band_width:               13
+  jaccard_threshold:        0.70
+  small_bucket_threshold:   200
+  max_bucket_size:          10000
+  gpu_verify_chunk:         2000000
+  rmm_pool:                 true
+  rmm_managed_memory:       false
+  use_cugraph_cc:           true
+  use_cudf:                 false
+  use_cugraph:              false
+  minhash_chunk_size:       5000000
+  candidate_fraction_max:   0.97
+  save_candidate_edges:     true
+  refine_chains:            false
+  strict_jaccard_threshold: 0.85
+  refine_min_size:          10
+  seed:                     1
+  exact_jaccard_verify:     true
+  exact_verify_margin:      0.10
+  exact_verify_workers:     64
+
+audio_fingerprint:
+  mel_n_bins:        64
+  mel_f_min:         200
+  mel_f_max:         3000
+  mel_frame_rate:    40
+  hash_frame_rate:   12.5
+  m_frames:          4
+  M_frames:          20
+  time_window:       9
+  energy_factor:     1.0
+  freq_top_k:         3
+  keypoints_per_bin:  2
+  peak_mode:          global
+  local_norm_time:    41
+  silence_rel_floor:  0.02
+
+audio_match:
+  min_keypoints:        4
+  match_min_abs:        4
+  match_frac:           0.10
+  min_relative_match:   0.10
+  strong_match_frac:    0.85
+  hist_tolerance:       1
+  small_cluster_max:    200
+  huge_cluster_max:     10000
+  pre_filter_min_shared: 4
+  workers:              16
+  save_match_edges:     true
+
+quality_ingest:
+  quality_search_paths:
+    - /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/quality
+
+retention:
+  quality_schema: quality_v1
+  quality_mode:   both
+  gate_percentile: 10
+  gate_drop:       true
+  weights:
+    utmos:    0.30
+    dnsmos:   0.40
+    audiobox: 0.20
+    rover:    0.10
+    language: 0.00
+  dnsmos_variant: nisqa
+  max_cluster_size: 100
+  per_dataset_quality_floor: {}
+  preferred_dataset_order: []
+
+# Stage G not needed for the comparison.
+apply_to_shar:
+  enabled: false

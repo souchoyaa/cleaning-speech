@@ -1,0 +1,44 @@
+# MOS pipeline — CV-FR throughput config.
+#
+# All four metrics enabled (UTMOS, SQUIM, DNSMOS Pro, AudioBox). Tuned to
+# push the GH200 GPU memory ceiling. To stress further: raise
+# max_batch_duration first, then audiobox_sub_batch.
+
+# ===== input / output =====
+shar_dir:           "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/commonvoice/fr_train"  # input Lhotse Shar
+output_dir:         "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/results/mos/cv_fr_throughput_sweep/"  # output root
+target_sample_rate: 16000  # resample target
+
+unique_output_subdir: true  # per-run subdir under output_dir (sweep without clobbering)
+
+fail_fast_oom: true  # re-raise CUDA OOM instead of swallowing as failed batch
+
+# ===== bucketing (primary OOM / throughput driver) =====
+max_batch_duration: 2400.0  # max audio seconds per batch — try 2400→3200→4000→4800 until OOM
+num_buckets:        20      # duration bins
+bucket_buffer_size: 10000   # cuts buffered for bucket assignment
+quadratic_duration: 60.0    # quadratic cost penalty for long-clip buckets
+# max_batch_cuts: 512       # uncomment for a hard cut-count cap
+
+# ===== loader =====
+decode_num_workers: 32  # DataLoader subprocesses for audio decode
+prefetch_factor:    6   # batches each DataLoader worker prefetches
+
+# ===== audio truncation (per-cut sample budget on GPU) =====
+truncate_secs: 60.0  # max seconds per cut sent to the metrics
+
+# ===== metric flags =====
+use_utmos:        true       # UTMOS v1 — neural MOS predictor
+use_squim:        true       # SQUIM Obj — STOI / PESQ / SI-SDR
+use_dnsmos:       true       # DNSMOS Pro
+dnsmos_variant:   "nisqa"    # DNSMOS Pro head (nisqa | bvcc | vcc2018)
+dnsmos_cache_dir: "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/caches/dnsmos"  # JIT checkpoint cache
+use_audiobox:        true    # AudioBox Aesthetics — CE / CU / PC / PQ
+audiobox_sub_batch:  128     # sub-batch size for the inner AudioBox forwards
+
+# ===== compile / profile =====
+use_compile: false  # torch.compile UTMOS (off here to avoid recompile noise during sweeps)
+
+use_profiler:           true  # write perfetto traces to {output_dir}/profiler/run_*/
+profile_warmup_batches: 5     # batches to skip before recording starts
+profile_batches:        30    # batches actively recorded

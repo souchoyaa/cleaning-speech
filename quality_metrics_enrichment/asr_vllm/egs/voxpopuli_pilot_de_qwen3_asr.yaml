@@ -1,0 +1,42 @@
+# asr_vllm — VoxPopuli pilot (German), Qwen3-ASR-1.7B backend.
+#
+# Pilot slice: 1 worker (~50k cuts) of voxpopuli_asr/de.  German is in the
+# "all-3" group (parakeet + canary + qwen), so qwen runs here.
+#
+# qwen runs via the transcription backend (/v1/audio/transcriptions) — the
+# faster, proven eval path. NOTE: this endpoint does NOT return logprobs
+# (avg_logp stays 0.0; ROVER uses majority voting, the default). The
+# chat_completion backend (request_logprobs + <asr_text> marker parsing) is
+# still available if logprobs are wanted later — flip backend to
+# chat_completion. Chosen here for throughput at scale.
+
+# Per-language output ROOT: <root>/<lang> holds quality_asr/{parakeet,canary,qwen}
+# + quality_mos + dedup_out. parakeet/canary multilang append only <lang> (no
+# /quality wrapper), so qwen's output_dir is the same <root>/<lang> for parity.
+shar_dir:   "/capstor/scratch/cscs/sgodey/dedup_pipeline_test/voxpopuli_pilot/de"
+output_dir: "/capstor/scratch/cscs/sgodey/dedup_pipeline_test/voxpopuli_pilot_out/de"
+
+loader:
+  num_workers:   16
+  queue_size:    512
+  min_duration:  0.5
+  max_duration:  600
+
+vllm_launcher:
+  script: "vllm_qwen3_asr_launcher.sh"
+  port:   8080
+
+vllm_feeder:
+  backend:    "transcription"              # /v1/audio/transcriptions (fast, proven; no logprobs)
+  slot_name:  "qwen"
+  api_base:   ""
+  api_key:    "EMPTY"
+  api_model:  "Qwen/Qwen3-ASR-1.7B-${USER}"
+  api_temperature: 0.0
+  api_concurrency: 128                     # absolute; saturates the DP=4 server (1 API port)
+  api_timeout: 240
+  api_max_retries: 4
+  log_every:         1000
+  work_queue_size:   1024
+  flush_every:       1000
+  heartbeat_seconds: 5

@@ -1,0 +1,55 @@
+# asr_parakeet — single-shar config (CV-FR train split).
+#
+# One SLURM job, 4 ranks (1 per GH200), each rank takes a shard subset
+# via SharAudioLoader's stride split. Per-rank JSONL lands at:
+#   <output_dir>/parakeet/parakeet_rank_{0000..0003}.jsonl
+# Per-rank cutid sidecar: <jsonl>.cutids
+#
+# Resume happens automatically on rerun: each run scans its own JSONL
+# at startup, builds the seen-cut-ids set, and skips them in the loader.
+
+# ===== common =====
+# output_dir is the per-dataset directory. Parakeet writes to
+# <output_dir>/asr_plain_output/parakeet/parakeet_rank_*.jsonl.
+shar_dir:           "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/commonvoice/fr_train"
+output_dir:         "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/Result/quality_metrics/cv_fr_train"
+target_sample_rate: 16000
+
+# ===== loader / dynamic bucketing =====
+# 4 ranks × 16 workers = 64 forked DataLoader workers — same as the
+# fused multilang config (proved stable on the 460 GB cgroup).
+loader:
+  max_batch_duration: 1200.0
+  num_buckets:        20
+  bucket_buffer_size: 30000
+  decode_num_workers: 16
+  prefetch_factor:    4
+  sampler_shuffle:    true
+  sampler_seed:       42
+  dataloader_timeout: 300
+
+# ===== parakeet (multilingual TDT — single model across all languages) =====
+parakeet:
+  model:                   "nvidia/parakeet-tdt-0.6b-v3"
+  nemo_micro_batch_size:   512    # auto-halves on OOM split-retry
+  dtype:                   "bfloat16"
+  compute_word_timestamps: false  # off → fast path; align in asr_canary instead
+
+# ===== vad (Frame-VAD MarbleNet v2.0) =====
+# Each row gains a `vad: {speech_pct, speech_spans}` block. Set
+# `skip_if_below` to short-circuit silent cuts (writes empty hyp).
+vad:
+  enabled:        true
+  model:          "nvidia/frame_vad_multilingual_marblenet_v2.0"
+  threshold:      0.5
+  min_speech_ms:  250
+  min_silence_ms: 250
+  skip_if_below:  null   # e.g. 0.05 to skip cuts with <5% speech
+
+# ===== runner knobs =====
+# heartbeat_seconds: wall-clock cadence — the only snapshot logger.
+# flush_every: fsync JSONL + sidecar every N rows (smaller = safer, slower).
+runner:
+  heartbeat_seconds:  5.0
+  flush_every:        100
+  writer_queue_size:  1024

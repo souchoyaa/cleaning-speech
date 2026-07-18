@@ -1,0 +1,68 @@
+# asr_canary — multi-language × multi-split sequential mode.
+#
+# Per-iteration: Canary + NFA reload (per-language NFA checkpoint), VAD
+# is multilingual (single model survives all iterations but is reloaded
+# for symmetry).
+#
+# Per-(lang, split) outputs land at:
+#   <output_dir>/<lang>/<split>/canary/canary_rank_*.jsonl
+
+# ===== multi-language driver =====
+# One run per language — no per-split iteration. The per-language
+# ``shar_dir`` (``<language_split_dir>/<lang>``) should be either a flat
+# union shar or a unified directory containing every split's shards.
+language_split_dir:        "/capstor/scratch/cscs/sgodey/audio-datasets/SHAR/stage_2/commonvoice22_sidon"
+languages:                 ["en", "es", "fr", "pt", "de", "nl", "it"]
+language_subdir_template:  "{lang}"
+
+# ===== common =====
+output_dir:         "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/Result/quality_metrics/commonvoice22_sidon"
+target_sample_rate: 16000
+
+# ===== loader =====
+loader:
+  max_batch_duration: 1200.0
+  num_buckets:        20
+  bucket_buffer_size: 30000
+  decode_num_workers: 16
+  prefetch_factor:    4
+  sampler_shuffle:    true
+  sampler_seed:       42
+  dataloader_timeout: 300
+
+# ===== canary =====
+# `language` left unset → main.py overrides to the current loop language
+# (same rule as the legacy asr/main.py multilang pattern). Set to a
+# literal (e.g. "fr") to pin across all iterations, or "{lang}" to
+# template explicitly.
+canary:
+  model:                   "nvidia/canary-1b-v2"
+  nemo_micro_batch_size:   192
+  dtype:                   "bfloat16"
+  compute_word_timestamps: true
+  # language: omitted → set per (lang, split)
+
+# ===== alignment (per-language NFA checkpoint, {lang} substituted) =====
+# User must ensure a checkpoint exists for every language in the list.
+# To skip alignment for a language without losing the run, set
+# `alignment.enabled: false` and accept ctc_aux timestamps in those slots.
+alignment:
+  enabled:               true
+  model:                 "nvidia/stt_{lang}_fastconformer_hybrid_large_pc"
+  nemo_micro_batch_size: 16
+  dtype:                 "bfloat16"
+
+# ===== vad =====
+vad:
+  enabled:        true
+  model:          "nvidia/frame_vad_multilingual_marblenet_v2.0"
+  threshold:      0.5
+  min_speech_ms:  250
+  min_silence_ms: 250
+  skip_if_below:  null
+
+# ===== runner =====
+runner:
+  heartbeat_seconds:  5.0
+  flush_every:        100
+  writer_queue_size:  1024

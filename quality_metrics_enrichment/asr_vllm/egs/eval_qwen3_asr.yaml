@@ -1,0 +1,48 @@
+# asr_vllm — CV-FR config, Qwen3-ASR-1.7B backend.
+#
+# Multilingual ASR (52 langs, incl. 22 Chinese dialects), 1.7B params,
+# built on Qwen3-Omni foundation. Served by vLLM 0.19+
+# (Qwen3ASRForConditionalGeneration arch, registered upstream).
+#
+# Run on the interactive node:
+#   bash asr_vllm/scripts/launch.sh --config cv_fr_qwen3_asr.yaml
+#
+# launch.sh will auto-pick the matching launcher script from this YAML
+# (``vllm_launcher.script``) and propagate the port + served-name.
+#
+# NOTE: ``${USER}`` in api_model is expanded at launch — must match what
+# vllm_qwen3_asr_launcher.sh passes via ``--served-model-name``. If you
+# change one, change the other.
+
+shar_dir:   "/capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/en"
+output_dir: "/capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/quality"
+
+loader:
+  num_workers:   16     # reader IO threads
+  queue_size:    512    # reader→producer buffer
+  min_duration:  0.5    # drop sub-half-sec
+  max_duration:  600    # drop > 10 min
+
+# Tell launch.sh which sml launcher script to use and which port the
+# server exposes. Defaults (vllm_launcher.sh / 5000) target Voxtral.
+vllm_launcher:
+  script: "vllm_qwen3_asr_launcher.sh"   # sml launcher
+  port:   8080                           # server port
+
+vllm_feeder:
+  # Qwen3-ASR is reached via the OpenAI /v1/audio/transcriptions endpoint
+  # (multipart FLAC upload). Stock vLLM 0.19+ registers the transcription
+  # task for the Qwen3ASR arch, so the transcription backend works as-is.
+  backend:    "transcription"                            # HTTP backend
+  slot_name:  "qwen"                               # output subdir + JSONL slot
+  api_base:   ""                                   # set by launch.sh
+  api_key:    "EMPTY"                              # vLLM bearer
+  api_model:  "Qwen/Qwen3-ASR-1.7B-${USER}"        # served-model-name match
+  api_temperature: 0.0                             # greedy decode
+  api_concurrency_per_replica: 32                  # × 4 replicas = 128 in flight
+  api_timeout: 240                                 # per-request seconds
+  api_max_retries: 4                               # transient retries
+  log_every:         1000                          # writer log cadence
+  work_queue_size:   1024                          # producer→consumer buffer
+  flush_every:       1000                          # fsync cadence
+  heartbeat_seconds: 5                             # liveness log cadence

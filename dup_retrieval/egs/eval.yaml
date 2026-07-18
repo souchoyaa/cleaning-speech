@@ -1,0 +1,122 @@
+# End-to-end dedup + MOS-quality retention on the LibriSpeech eval benchmark
+# (dup_retrieval/eval/make_eval_dataset.py with the MOS block).  Full pipeline:
+#   manifest -> text_dedup -> audio_fingerprint -> audio_match
+#   -> quality_ingest (MOS JSONLs -> quality_flat) -> retention
+#
+# dataset tag is pinned to "mos" via dataset_overrides so it matches the tag
+# quality_ingest derives for en/mos/mos_rank_*.jsonl (parent dir = "mos").
+
+# ----- Inputs / outputs ------------------------------------------------------
+shar_dirs:
+  - /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/en
+dataset_overrides:
+  /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/en: mos
+
+output_dir: /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/dedup_out
+
+# ----- Loader knobs (Stage D) -----------------------------------------------
+target_sample_rate: 16000
+max_batch_duration: 1500.0
+num_buckets:        20
+bucket_buffer_size: 10000
+decode_num_workers: 8
+prefetch_factor:    4
+truncate_secs:      30.0
+
+# ----- Stage A — manifest ----------------------------------------------------
+manifest:
+  inner_workers:         16
+  min_text_chars:        4
+  drop_empty_text:       true
+  strip_punctuation:     true
+
+# ----- Stage C — fuzzy dedup (validated synth config: lenient text, audio refines)
+text_dedup:
+  backend:                  cudf
+  ngram_size:               16
+  num_permutations:         260
+  num_bands:                20
+  band_width:               13
+  jaccard_threshold:        0.70
+  small_bucket_threshold:   200
+  max_bucket_size:          10000
+  gpu_verify_chunk:         2000000
+  rmm_pool:                 true
+  rmm_managed_memory:       false
+  use_cugraph_cc:           true
+  use_cudf:                 false
+  use_cugraph:              false
+  minhash_chunk_size:       5000000
+  candidate_fraction_max:   0.97     # eval set is dedup-dense
+  save_candidate_edges:     true
+  refine_chains:            false
+  strict_jaccard_threshold: 0.85
+  refine_min_size:          10
+  seed:                     1
+  # B2 — exact char-n-gram Jaccard on the LSH candidate set (CPU, parallel),
+  # replacing the noisy MinHash estimate near the threshold.  ON for the eval.
+  exact_jaccard_verify:     true
+  exact_verify_margin:      0.10
+  exact_verify_workers:     64
+
+# ----- Stage D — audio fingerprint ------------------------------------------
+audio_fingerprint:
+  mel_n_bins:        64
+  mel_f_min:         200
+  mel_f_max:         3000
+  mel_frame_rate:    40
+  hash_frame_rate:   12.5
+  m_frames:          4
+  M_frames:          20
+  time_window:       9
+  energy_factor:     1.0
+  freq_top_k:         3      # #9 — top-3 loudest bands per frame (densify)
+  keypoints_per_bin:  2      # #9 — up to 2 keypoints per t_hash bin
+  peak_mode:          global # local (crop-invariant) tried 2026-06-24: partial_crop FLAT (42.2→42.3),
+  local_norm_time:    41     # clipping −5.8, no purity gain → reverted; global is the dedup default
+  silence_rel_floor:  0.02
+
+# ----- Stage E — audio matching ----------------------------------------------
+audio_match:
+  min_keypoints:        4
+  match_min_abs:        4
+  match_frac:           0.10   # sweep 0.30→0.10: overall audio recall 57→66%, partial_crop 11→42%,
+  min_relative_match:   0.10   # clipping/music/naturalness→90s; purity stayed 100% on this eval
+  strong_match_frac:    0.85
+  hist_tolerance:       1      # ±1 frame (~80ms) absorbs codec/resample timing jitter (B1)
+  small_cluster_max:    200
+  huge_cluster_max:     10000
+  pre_filter_min_shared: 4
+  workers:              16
+  save_match_edges:     true
+
+# ----- quality_ingest — pivot MOS JSONLs into quality_flat.parquet -----------
+quality_ingest:
+  quality_search_paths:
+    - /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/quality   # ALL quality: quality_mos/part_*.jsonl (MOS) + quality_asr/rover/merged.jsonl (ASR), dataset=mos
+
+# ----- Stage F — retention (2-case design) ----------------------------------
+retention:
+  quality_schema: quality_v1
+  quality_mode:   both         # mos | asr | both  (MOS in en/mos/ + ASR rover in quality/)
+  gate_percentile: 10          # unique-sample gate: flag bottom 10% by gate_score
+  gate_drop:       true        # drop low-quality unique cuts (curated output excludes them)
+  weights:
+    utmos:    0.30
+    dnsmos:   0.40
+    audiobox: 0.20
+    rover:    0.10
+    language: 0.00
+  dnsmos_variant: nisqa
+  max_cluster_size: 100
+  per_dataset_quality_floor: {}   # rely on the gate, not an absolute floor
+  preferred_dataset_order: []
+
+# ----- Stage G — apply (clone-with-symlinks; annotate cuts with keep decision) -----
+apply_to_shar:
+  enabled: true
+  link_mode: symlink   # audio tars symlinked (zero copy); only cuts.*.jsonl.gz rewritten
+  in_place: false      # clone into output_shar/, never modify the originals
+  add_asr_transcript: true   # inject cut.custom["asr_transcript"] = ROVER-improved transcript
+                             # (read from quality_search_paths' rover/merged.jsonl)
+  output_shar_dir: /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/dedup_out/output_shar

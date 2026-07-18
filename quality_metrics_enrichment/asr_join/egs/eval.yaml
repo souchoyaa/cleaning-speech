@@ -1,0 +1,107 @@
+# asr_join — single-shar config (CV-FR train split).
+dataset: mos   # unified id stamped into merged.jsonl for the retention join
+#
+# Merges per-rank JSONLs from the 3 ASR runners (parakeet, canary, qwen)
+# by cut_id; applies ROVER 2-of-3 + repetition + language-consistency;
+# writes <merge_output_dir>/asr_agg/rover/merged.jsonl.
+#
+# Layout assumption (set by the three runners):
+#   <input_root>/asr_plain_output/{parakeet,canary,qwen}/<slot>_rank_*.jsonl
+# The ``asr_plain_output/`` prefix is hardcoded in join.load_slot.
+
+# ONE input_root — the per-dataset directory under Result/quality_metrics/.
+# All three slots live under the same root in subdirs of asr_plain_output/.
+input_root: "/capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval/quality"
+
+# Optional: explicit merge_output_dir. Defaults to input_root (write the
+# asr_agg/rover/merged.jsonl alongside the inputs in the same dataset dir).
+# merge_output_dir: "/capstor/.../Result/quality_metrics/cv_fr_train"
+
+# Slot definitions — where the rank files live under input_root and where
+# the hypothesis payload sits within a row.
+#   - dir_name:   subdir under <input_root>/asr_plain_output/ containing
+#                 the rank files. Files match <dir_name>_rank_*.jsonl.
+#   - payload_at: row key holding the slot's hypothesis dict. Use null when
+#                 the slot writes hyp fields (text/avg_logp/language/error)
+#                 directly at row top level — that's what asr_vllm does.
+slots:
+  parakeet:
+    dir_name:   "parakeet"
+    payload_at: "parakeet"
+  canary:
+    dir_name:   "canary"
+    payload_at: "canary"
+  qwen:
+    # asr_vllm writes to <output_dir>/asr_plain_output/<vllm_feeder.slot_name>/.
+    # Defaults aligned: slot_name="qwen" → dir_name="qwen".
+    dir_name:   "qwen"
+    payload_at: null
+
+# ===== ROVER (offline) =====
+rover:
+  primary:              "qwen"      # anchor slot (parakeet | canary | qwen | ref | …)
+  voting:               "majority"  # majority (paper) | confidence (avg_logp-weighted)
+  timestamp_source:     "canary"    # fallback slot for word_timestamps when primary has none
+  repetition_ngram:     15
+  repetition_max_count: 5
+
+  # Include the dataset's ref_text as a 4th voter (only when ref_text is
+  # non-empty for that row). When a word position has a vote tie, it is
+  # flagged in ``rover.ambiguous_words`` and the LLM ITN call resolves
+  # it contextually in the same prompt. Set ``primary: "ref"`` to anchor
+  # the consensus on the ground truth instead of on an ASR slot.
+  include_ref_text: false
+
+  # ===== Enhanced (improved) transcript =====
+  # Adds rover.text_enhanced: the ORIGINAL transcript (ref) corrected by ASR
+  # consensus.  ref is the anchor/default; a 2-of-3 ASR majority overrides it.
+  # Weights have distinct subset sums => the per-word winner is always unique
+  # (deterministic for any voter count, incl. even; validated at startup).
+  # ASR weights are RANKED by measured WER vs the original transcript on eval
+  # (canary 8.49% < parakeet 8.57% < qwen 9.67%).  ref=1.5 sits above any single
+  # ASR (1.0x) and below any two (>=2.0x), realizing the 2-of-3 override policy.
+  enhanced:
+    enabled: true
+    weights:
+      ref:      1.5
+      canary:   1.02
+      parakeet: 1.01
+      qwen:     1.00
+
+  # Inverse text normalization via LLM (vLLM chat completions).
+  # Adds rover.text_itn next to rover.text:
+  #   "sixty nine"           → "69"
+  #   "two thousand dollars" → "$2000"
+  #   "三百零五"               → "305"
+  # Universal language coverage — works for any language the served
+  # model knows (Gemma-4 family: ~140 langs). Falls back to verbatim on
+  # any HTTP / parse / length-sanity failure (per-cut, never breaks the run).
+  # NOTE: word_timestamps stay aligned to verbatim ``text``, NOT to
+  # ``text_itn`` (one digit can replace several spoken words).
+  itn:
+    # OFF for the deterministic re-run: rover.text_enhanced is produced in
+    # phase 1 with NO LLM, so the improved transcript exists without a server.
+    # To add LLM refinement: stand up the vLLM ITN server, set api_base, and
+    # flip enabled: true — input_field below routes it onto the enhanced text
+    # (-> text_enhanced_itn) and the prompt keeps the deterministic default.
+    enabled: false
+    # resolve_conflicts: true  → ITN also resolves split ROVER votes (per-word
+    #   candidate reasoning; use when transcripts are unreliable). false → plain
+    #   number/date/currency normalization only, lighter task (transcripts trusted).
+    resolve_conflicts: true
+    input_field: text_enhanced   # ITN refines the improved transcript, not the raw consensus
+    # api_base / api_model: prefer env vars (ITN_API_BASE / VLLM_API_BASE
+    # and ITN_MODEL / VLLM_MODEL); set here for stand-alone runs.
+    # api_base is set at run time via ITN_API_BASE=http://<sml_node>:8080 (dynamic).
+    api_base:  "http://REPLACE-WITH-ITN-NID:8080"
+    api_model: "google/gemma-4-26B-A4B-it-${USER}"
+    concurrency:      128      # tuned: single-feeder peak ~250/s (vs 130/s @64); degrades >128
+                               # (asyncio/httpx limit). Server ceiling ~576/s needs ~6 parallel feeders.
+    timeout_seconds:  60.0
+    chunk_size:       2000
+    progress_every:   5000
+    min_len_ratio: 0.25
+    max_len_ratio: 3.0
+    circuit_break_fraction: 0.8
+
+expected_language: "en"

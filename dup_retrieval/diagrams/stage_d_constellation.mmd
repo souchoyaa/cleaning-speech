@@ -1,0 +1,58 @@
+%% Stage D — Wang 2003 / Moshi Appendix B constellation hash detail.
+
+flowchart TB
+    subgraph IN [Input]
+        WL[text_clusters.parquet<br/>candidate (dataset, cut_id) whitelist]
+        SHAR[(shar_dirs)]
+    end
+
+    subgraph LOAD [Audio loader]
+        L1[CutSet.from_shar + filter to whitelist]
+        L2[DynamicBucketingSampler<br/>group by duration, minimize padding]
+        L3[DataLoader<br/>pin_memory, prefetch, persistent_workers]
+        L4[CandidateAudioBatch<br/>(B, T_max), lengths, dataset, cut_ids]
+    end
+
+    subgraph GPU [GPU compute - per batch]
+        G1[Mel spectrogram<br/>40 Hz frame rate, 64 bins, 200-3000 Hz]
+        G2[Energy filter<br/>mel > energy_factor * mel.mean]
+        G3[Time filter<br/>mel == max_pool2d(mel, (1, time_window))]
+        G4[Frequency filter<br/>mel == mel.max(dim=freq, keepdim=True)]
+        G5[Constellation = AND of three filters]
+    end
+
+    subgraph EXTRACT [Per-cut keypoint extraction]
+        E1[torch.nonzero on mask -> (b, f, t)]
+        E2[Quantize t: t_hash = floor(t * 12.5/40)]
+        E3[Per t_hash bin keep highest-energy peak]
+    end
+
+    subgraph SIG [Signature encoding]
+        S1[Sort keypoints by t_hash]
+        S2[For each keypoint k:<br/>find forward partner f in [tk+m, tk+M)<br/>find backward partner b in (tk-M, tk-m]]
+        S3[Pack hash: fb&#124;fk&#124;ff&#124;dtb&#124;dtf<br/>26 bits as int64]
+        S4[Empty fingerprint? emit sentinel row]
+    end
+
+    subgraph OUT [Output]
+        O1[fingerprints/part_NNNN.parquet<br/>(dataset, cut_id, hash, t_hash, n_hashes_total)]
+        O2[part_NNNN.parquet.cutids<br/>resume sidecar]
+    end
+
+    WL --> L1
+    SHAR --> L1
+    L1 --> L2 --> L3 --> L4
+    L4 --> G1 --> G5
+    G1 --> G2 --> G5
+    G1 --> G3 --> G5
+    G1 --> G4 --> G5
+    G5 --> E1 --> E2 --> E3 --> S1 --> S2 --> S3 --> O1
+    S3 --> S4 --> O1
+    O1 --> O2
+
+    classDef store fill:#ffe4b5,stroke:#a05a00,color:#222;
+    classDef gpu   fill:#cfe6ff,stroke:#15467b,color:#222;
+    classDef cpu   fill:#dffadc,stroke:#1c6d1c,color:#222;
+    class WL,SHAR,O1,O2 store;
+    class G1,G2,G3,G4,G5 gpu;
+    class L1,L2,L3,L4,E1,E2,E3,S1,S2,S3,S4 cpu;

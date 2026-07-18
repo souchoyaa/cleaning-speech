@@ -1,0 +1,60 @@
+{
+  "stage": "retention",
+  "n_total": 190315,
+  "n_kept": 162206,
+  "n_dropped": 28109,
+  "n_clustered": 54732,
+  "n_low_quality": 19031,
+  "n_kept_low_quality": 10817,
+  "max_cluster_size": 100,
+  "n_text_cluster_capped": 0,
+  "n_text_clusters_capped": 0,
+  "quality_mode": "mos",
+  "active_axes": [
+    "utmos",
+    "dnsmos",
+    "aes_ovl",
+    "si_sdr",
+    "stoi",
+    "pesq"
+  ],
+  "gate_percentile": 10,
+  "gate_drop": false,
+  "gate_threshold": -1.4851297962573482,
+  "n_gate_dropped": 0,
+  "weights": {
+    "utmos": 0.3,
+    "dnsmos": 0.4,
+    "audiobox": 0.2,
+    "rover": 0.1,
+    "language": 0.0
+  },
+  "dnsmos_variant": "nisqa",
+  "quality_zscore_stats": {
+    "utmos": [
+      3.9270175787510175,
+      0.6158101066153525
+    ],
+    "dnsmos": [
+      3.694982246801356,
+      0.39504465931367416
+    ],
+    "aes_ovl": [
+      6.1050872767079145,
+      0.7298105194560397
+    ],
+    "si_sdr": [
+      23.03572597798387,
+      6.587987478080545
+    ],
+    "stoi": [
+      0.9858805727346767,
+      0.038379775396776165
+    ],
+    "pesq": [
+      3.456980855423902,
+      0.6980983739764082
+    ]
+  },
+  "fallback": "longest"
+}

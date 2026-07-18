@@ -1,0 +1,29 @@
+# pipeline/egs/cv_multilang.yaml — multilang pipeline (CV 7 languages).
+#
+# parakeet and canary iterate languages internally via their own
+# language_split_dir mechanism (see asr_parakeet/egs/cv_multilang.yaml).
+# qwen does NOT iterate internally — list per-language configs under
+# ``qwen.configs`` instead; the first one starts vLLM (mode_a) and the
+# rest reuse it (auto mode_b).
+
+stages:
+
+  parakeet:
+    enabled: true
+    config:  "asr_parakeet/egs/cv_multilang.yaml"
+
+  canary:
+    enabled: true
+    config:  "asr_canary/egs/cv_multilang.yaml"
+
+  qwen:
+    enabled: true
+    vllm_mode: "mode_a"   # mode_a for the first config; rest auto mode_b
+    configs:
+      - "asr_vllm/egs/cv_en_qwen3_asr.yaml"
+      - "asr_vllm/egs/cv_es_qwen3_asr.yaml"
+      - "asr_vllm/egs/cv_fr_qwen3_asr.yaml"
+      - "asr_vllm/egs/cv_pt_qwen3_asr.yaml"
+      - "asr_vllm/egs/cv_de_qwen3_asr.yaml"
+      - "asr_vllm/egs/cv_nl_qwen3_asr.yaml"
+      - "asr_vllm/egs/cv_it_qwen3_asr.yaml"

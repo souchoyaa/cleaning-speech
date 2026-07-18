@@ -1,0 +1,40 @@
+# asr_join template — consumed by pipeline/main.py batch mode.
+#
+# Placeholders {name}, {language}, {output_root} are substituted
+# per-dataset. ``input_root`` (and merge_output_dir, which defaults to it)
+# point at the per-dataset directory where the 3 ASR runners wrote their
+# asr_plain_output/<slot>/ files; the join reads them and writes
+# <input_root>/asr_agg/rover/merged.jsonl.
+
+input_root: "{output_root}/{name}"
+
+slots:
+  parakeet: {dir_name: "parakeet", payload_at: "parakeet"}
+  canary:   {dir_name: "canary",   payload_at: "canary"}
+  qwen:     {dir_name: "qwen",     payload_at: null}
+
+rover:
+  primary:              "qwen"
+  voting:               "majority"
+  timestamp_source:     "canary"
+  repetition_ngram:     15
+  repetition_max_count: 5
+  include_ref_text: false
+
+  itn:
+    enabled: true
+    # resolve_conflicts: true  → ITN also resolves split ROVER votes (use when
+    #   the transcripts are unreliable). false → plain number/date/currency
+    #   normalization only, lighter task (use when transcripts are trusted).
+    resolve_conflicts: true
+    api_base:  ""                              # set via ITN_API_BASE env
+    api_model: "google/gemma-4-E4B-it-${{USER}}"
+    concurrency:      64       # E4B is ~2× heavier than E2B — halve from 128
+    timeout_seconds:  60.0
+    chunk_size:       2000
+    progress_every:   5000
+    min_len_ratio: 0.25
+    max_len_ratio: 3.0
+    circuit_break_fraction: 0.8
+
+expected_language: "{language}"

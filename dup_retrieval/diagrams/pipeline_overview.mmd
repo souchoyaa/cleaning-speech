@@ -1,0 +1,83 @@
+%% dup_retrieval — end-to-end pipeline.
+%% Render via ./render.sh; outputs pipeline_overview.png.
+
+flowchart TB
+    subgraph INPUT [Input]
+        SHAR[(multiple shar_dirs<br/>cuts.*.jsonl.gz + recording.*.tar)]
+    end
+
+    subgraph A_STAGE [Stage A — text manifest]
+        direction TB
+        A_READ[gzip + json read raw cuts]
+        A_NORM[language-aware normalize<br/>NFKC, casefold, CJK char, RTL diacritics]
+        A_PARQ[manifest/part_*.parquet<br/>dataset, cut_id, text, normalized_text, duration]
+    end
+
+    subgraph B_STAGE [Stage B — exact dedup]
+        B_GROUP[DuckDB GROUP BY normalized_text]
+        B_OUT[exact_clusters.parquet]
+    end
+
+    subgraph C_STAGE [Stage C — fuzzy dedup]
+        direction TB
+        C_MH[chunked MinHash<br/>n=24 char-grams, K=256]
+        C_LSH[LSH banding<br/>20 bands × 13 rows]
+        C_VER[verified-pair bucket merge<br/>union-find on Jaccard ≥ 0.80]
+        C_REF{refine_chains?}
+        C_REFY[strict-threshold second pass]
+        C_OUT[text_clusters.parquet]
+    end
+
+    subgraph D_STAGE [Stage D — audio fingerprint]
+        direction TB
+        D_FILT[filter cutset to candidates]
+        D_LOAD[SharAudioLoader<br/>DynamicBucketingSampler]
+        D_MEL[GPU mel<br/>40 Hz, 64 bins, 200–3000 Hz]
+        D_CONS[constellation map<br/>energy ∧ time-local-max ∧ freq-argmax]
+        D_HASH[12.5 Hz timestamp quantize<br/>+ triplet hash pack 26 bits]
+        D_OUT[fingerprints/part_*.parquet]
+    end
+
+    subgraph E_STAGE [Stage E — audio match]
+        E_HOUGH[per-cluster Hough 1D voting<br/>+ adaptive threshold + min_relative_match]
+        E_UF[single-linkage union-find<br/>per cluster]
+        E_OUT[audio_clusters.parquet]
+    end
+
+    subgraph F_STAGE [Stage F — retention]
+        F_Q[load mos_rank_*.jsonl + asr_moe_rank_*.jsonl<br/>validate against quality_v1.json]
+        F_SCORE[scalar quality score<br/>weighted UTMOS/DNSMOS/AES/ROVER]
+        F_FLOOR[per-dataset reliability floor<br/>longest fallback if all unreliable]
+        F_OUT[final/dedup.parquet]
+    end
+
+    subgraph G_STAGE [Stage G — apply optional]
+        G_CLONE[copy-with-symlinks clone]
+        G_INJ[inject cut.custom dedup]
+        G_OUT[(output_shar_dir<br/>cuts.*.jsonl.gz fresh + symlinked tars)]
+    end
+
+    SHAR --> A_READ --> A_NORM --> A_PARQ
+    A_PARQ --> B_GROUP --> B_OUT
+    A_PARQ --> C_MH --> C_LSH --> C_VER --> C_REF
+    C_REF -- yes --> C_REFY --> C_OUT
+    C_REF -- no  --> C_OUT
+    C_OUT --> D_FILT
+    SHAR --> D_LOAD
+    D_FILT --> D_LOAD --> D_MEL --> D_CONS --> D_HASH --> D_OUT
+    D_OUT --> E_HOUGH
+    C_OUT --> E_HOUGH
+    E_HOUGH --> E_UF --> E_OUT
+    E_OUT --> F_Q
+    F_Q --> F_SCORE --> F_FLOOR --> F_OUT
+    F_OUT -.optional.-> G_CLONE --> G_INJ --> G_OUT
+
+    classDef store    fill:#ffe4b5,stroke:#a05a00,color:#222;
+    classDef gpu      fill:#cfe6ff,stroke:#15467b,color:#222;
+    classDef cpu      fill:#dffadc,stroke:#1c6d1c,color:#222;
+    classDef ctrl     fill:#f3e0ff,stroke:#5a1c8b,color:#222;
+    classDef out      fill:#fff5b3,stroke:#7a5b00,color:#222;
+    class SHAR,A_PARQ,B_OUT,C_OUT,D_OUT,E_OUT,F_OUT,G_OUT store;
+    class D_LOAD,D_MEL,D_CONS,D_HASH gpu;
+    class A_READ,A_NORM,B_GROUP,C_MH,C_LSH,C_VER,C_REFY,E_HOUGH,E_UF,F_Q,F_SCORE,F_FLOOR,G_CLONE,G_INJ cpu;
+    class C_REF,D_FILT ctrl;

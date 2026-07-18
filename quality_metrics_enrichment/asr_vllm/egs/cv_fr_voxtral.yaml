@@ -1,0 +1,43 @@
+# asr_vllm — CV-FR config, Voxtral backend.
+#
+# Run on the interactive node:
+#   bash asr_vllm/scripts/launch.sh --config cv_fr_voxtral.yaml
+#
+# Output:
+#   <output_dir>/voxtral/voxtral_rank_0000.jsonl  + .cutids sidecar
+#
+# Merged later by asr_join with the parakeet/ and canary/ outputs.
+
+# ===== common =====
+shar_dir:   "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/commonvoice/fr_train"
+output_dir: "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/Result/quality_metrics/cv_fr_train"
+
+# ===== loader =====
+# No bucketing — vLLM does its own batching. Knobs are about IO concurrency
+# on the Shar tar files.
+loader:
+  num_workers:   4       # concurrent shard readers (Capstor likes a few in flight)
+  queue_size:    512     # cuts buffered ahead of the consumers
+  # Optional duration filter — keep parity with the fused pipeline's
+  # implicit filter so the vllm/ output matches parakeet/ + canary/ cut sets.
+  min_duration:  0.5     # seconds
+  max_duration:  30.0    # seconds (Voxtral max-model-len is 8192 tokens ≈ 5 min)
+
+# ===== backend selection + HTTP knobs =====
+vllm_feeder:
+  backend:           "transcription"
+  api_base:          ""                                # overridden by VLLM_API_BASE
+  api_key:           "EMPTY"
+  api_model:         "mistralai/Voxtral-Small-24B-2507"  # also drives vllm_launcher.sh via launch.sh
+  api_response_format: "json"
+  api_temperature:   0.0
+  # Concurrency — prefer per-replica so scaling vLLM workers from 2 → 4
+  # automatically doubles in-flight requests without YAML edits. Falls
+  # back to absolute api_concurrency when per-replica is unset.
+  api_concurrency_per_replica: 128                      # × num_replicas at runtime
+  # api_concurrency:   256                              # absolute (alternative)
+  api_timeout:       240
+  api_max_retries:   4
+  log_every:         1000                               # cumulative status line every N cuts (heartbeat covers fine-grained)
+  work_queue_size:   256                                # CutItem backlog
+  flush_every:       500                                # JSONL / sidecar fsync cadence

@@ -1,0 +1,64 @@
+# Benchmark config — dedup pipeline on a real shar slice.
+# Slice: commonvoice22_sidon/en/validation (~16.3k cuts, ~27 h, 1.8 GB, 4 workers).
+# Goal: measure Stage C (cudf) + Stage D (random-access decode + GPU fingerprint).
+
+shar_dirs:
+  - /capstor/scratch/cscs/sgodey/audio-datasets/SHAR/stage_2/commonvoice22_sidon/en/validation
+dataset_root: /capstor/scratch/cscs/sgodey/audio-datasets/SHAR/stage_2
+
+output_dir: /iopsstor/scratch/cscs/sgodey/dedup_bench/cv_en_validation
+
+# ----- Loader knobs (Stage D) -----
+target_sample_rate: 16000
+max_batch_duration: 1500.0
+num_buckets:        20
+bucket_buffer_size: 10000
+decode_num_workers: 8
+prefetch_factor:    4
+truncate_secs:      30.0
+
+# ----- Stage A — manifest -----
+manifest:
+  inner_workers:    16
+  min_text_chars:   4
+  drop_empty_text:  true
+
+# ----- Stage C — fuzzy dedup (GPU) -----
+text_dedup:
+  backend:                  cudf
+  ngram_size:               16        # CommonVoice transcripts are short
+  num_permutations:         128
+  num_bands:                16
+  band_width:               8
+  jaccard_threshold:        0.80
+  small_bucket_threshold:   200
+  max_bucket_size:          10000
+  gpu_verify_chunk:         2000000
+  rmm_pool:                 true
+  use_cugraph_cc:           true
+  candidate_fraction_max:   1.0       # benchmark: CV repeats prompts; don't abort on high dup rate
+  save_candidate_edges:     false
+  seed:                     1
+
+# ----- Stage D — audio fingerprint (GPU) -----
+audio_fingerprint:
+  mel_n_bins:        64
+  mel_f_min:         200
+  mel_f_max:         3000
+  mel_frame_rate:    40
+  hash_frame_rate:   12.5
+  m_frames:          4
+  M_frames:          20
+  time_window:       9
+  energy_factor:     1.0
+
+# ----- Stage E — audio matching -----
+audio_match:
+  min_keypoints:        4
+  match_min_abs:        4
+  match_frac:           0.30
+  min_relative_match:   0.30
+  small_cluster_max:    200
+  huge_cluster_max:     10000
+  pre_filter_min_shared: 4
+  workers:              16

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dup_retrieval/quality_v1",
+  "title": "Quality JSONL contract (quality_assesment v1)",
+  "description": "Schema for the per-rank JSONL files produced by quality_assesment/core/pipeline_mos.py and pipeline_asr_moe.py. Stage F validates rows against this schema and aborts if zero rows parse. Pin the schema version in egs/full.yaml retention.quality_schema.",
+  "type": "object",
+  "required": ["cut_id"],
+  "additionalProperties": true,
+  "properties": {
+    "cut_id":   {"type": "string", "minLength": 1},
+    "dataset":  {"type": ["string", "null"]},
+    "duration": {"type": ["number", "null"]},
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "utmos": {
+          "type": "object",
+          "properties": {
+            "eval_secs": {"type": ["number", "null"]},
+            "score":     {"type": "object", "properties": {"utmos": {"type": "number"}}, "required": ["utmos"]}
+          },
+          "required": ["score"]
+        },
+        "squim": {
+          "type": "object",
+          "properties": {
+            "eval_secs": {"type": ["number", "null"]},
+            "score":     {"type": "object", "properties": {
+              "stoi":   {"type": "number"},
+              "pesq":   {"type": "number"},
+              "si_sdr": {"type": "number"}
+            }}
+          },
+          "required": ["score"]
+        },
+        "dnsmos_nisqa":   {"$ref": "#/$defs/single_score"},
+        "dnsmos_bvcc":    {"$ref": "#/$defs/single_score"},
+        "dnsmos_vcc2018": {"$ref": "#/$defs/single_score"},
+        "audiobox": {
+          "type": "object",
+          "properties": {
+            "eval_secs": {"type": ["number", "null"]},
+            "score":     {"type": "object", "properties": {
+              "CE": {"type": "number"},
+              "CU": {"type": "number"},
+              "PC": {"type": "number"},
+              "PQ": {"type": "number"}
+            }}
+          },
+          "required": ["score"]
+        }
+      }
+    },
+    "rover": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "voting":         {"type": "string", "enum": ["majority", "confidence"]},
+        "primary":        {"type": "string", "enum": ["parakeet", "canary", "qwen", "voxtral", "whisper", "ref"]},
+        "primary_fallbacks": {"type": "integer", "minimum": 0}
+      }
+    },
+    "language_consistency": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "expected":       {"type": ["string", "null"]},
+        "all_consistent": {"type": "boolean"},
+        "matches":        {"type": "object", "additionalProperties": {"type": ["boolean", "null"]}}
+      }
+    },
+    "vad": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "speech_pct": {"type": "number", "minimum": 0.0, "maximum": 1.0}
+      }
+    },
+    "filtered_reason": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "single_score": {
+      "type": "object",
+      "properties": {
+        "eval_secs": {"type": ["number", "null"]},
+        "score":     {"type": "object"}
+      },
+      "required": ["score"]
+    }
+  }
+}

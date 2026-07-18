@@ -1,0 +1,29 @@
+# asr_join — VoxPopuli pilot, German (all-3 group: parakeet + canary + qwen).
+# Reads <input_root>/quality_asr/{parakeet,canary,qwen}/<slot>_rank_*.jsonl,
+# writes <input_root>/quality_asr/rover/merged.jsonl.
+dataset: de
+
+input_root: "/capstor/scratch/cscs/sgodey/dedup_pipeline_test/voxpopuli_pilot_out/de"
+
+slots:
+  parakeet:
+    dir_name:   "parakeet"
+    payload_at: "parakeet"
+  canary:
+    dir_name:   "canary"
+    payload_at: "canary"
+  qwen:
+    dir_name:   "qwen"
+    payload_at: null        # asr_vllm writes hyp fields at row top level
+
+rover:
+  primary:              "qwen"
+  voting:               "majority"
+  timestamp_source:     "canary"
+  repetition_ngram:     15
+  repetition_max_count: 5
+  include_ref_text:     false
+  itn:
+    enabled: false          # pilot: skip ITN (no 2nd vLLM server); proven on eval
+
+expected_language: "de"

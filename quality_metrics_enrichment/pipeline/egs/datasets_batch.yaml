@@ -1,0 +1,65 @@
+# pipeline/egs/datasets_batch.yaml — batch mode: many datasets, one YAML.
+#
+# Mode is auto-detected by presence of top-level ``datasets:``. For each
+# dataset, the orchestrator renders each enabled stage's ``template``
+# (a YAML with {name}/{language}/{shar_dir}/{output_root} placeholders)
+# into ``render_dir/<name>/<stage>.yaml`` and dispatches via the same
+# per-stage runner that single-config pipeline.yaml uses.
+#
+# Output layout (all 3 ASR stages + asr_join write into one tree):
+#   <output_root>/<name>/asr_plain_output/{parakeet,canary,qwen}/
+#   <output_root>/<name>/asr_agg/rover/merged.jsonl
+#
+# The rendered YAMLs are kept on disk (not deleted) so reruns and
+# debugging can inspect exactly what was submitted.
+
+# Single output root — everything (3 ASR slots + ROVER aggregate) lands
+# under <output_root>/<dataset_name>/. Substituted into every stage
+# template via {output_root}.
+output_root: "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/Result/quality_metrics"
+
+# Where rendered per-dataset stage configs go.
+render_dir: "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/.pipeline_rendered"
+
+# ===== datasets =====
+# Each entry: ``name`` (becomes part of output_dir) + ``vars`` (substituted
+# into stage templates). Add per-dataset overrides under ``vars`` as you
+# need (e.g. shar_dir, language, but also arbitrary template knobs).
+datasets:
+  - name: cv_fr_train
+    vars:
+      language: "fr"
+      shar_dir: "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/commonvoice/fr_train"
+  - name: cv_de_train
+    vars:
+      language: "de"
+      shar_dir: "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/commonvoice/de_train"
+  - name: cv_es_train
+    vars:
+      language: "es"
+      shar_dir: "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/commonvoice/es_train"
+  - name: cv_it_train
+    vars:
+      language: "it"
+      shar_dir: "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/commonvoice/it_train"
+
+# ===== stages =====
+# Same shape as single-config pipeline.yaml, except each stage has a
+# ``template:`` path instead of ``config:``. The orchestrator renders the
+# template per-dataset before dispatch.
+stages:
+  parakeet:
+    enabled: true
+    template: "asr_parakeet/egs/_template.yaml"
+
+  canary:
+    enabled: true
+    template: "asr_canary/egs/_template.yaml"
+
+  qwen:
+    enabled: true
+    template: "asr_vllm/egs/_template.yaml"
+    # mode_a for the FIRST dataset only — vLLM brought up there gets
+    # reused (auto mode_b) for subsequent datasets. Saves N-1 sml jobs
+    # when running many languages on one model.
+    vllm_mode: "mode_a"

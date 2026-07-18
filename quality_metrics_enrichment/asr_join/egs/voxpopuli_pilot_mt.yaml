@@ -1,0 +1,27 @@
+# asr_join — VoxPopuli pilot, Maltese (subset group: parakeet + canary only,
+# no qwen). 2-slot ROVER. The merged.jsonl ASR-quality fields are NOT used by
+# retention for subset langs (quality_mode=mos), but the ROVER consensus is
+# still produced as the transcript "enhancement".
+dataset: mt
+
+input_root: "/capstor/scratch/cscs/sgodey/dedup_pipeline_test/voxpopuli_pilot_out/mt"
+
+slots:
+  parakeet:
+    dir_name:   "parakeet"
+    payload_at: "parakeet"
+  canary:
+    dir_name:   "canary"
+    payload_at: "canary"
+
+rover:
+  primary:              "canary"   # qwen absent for mt; canary anchors + has timestamps
+  voting:               "majority"
+  timestamp_source:     "canary"
+  repetition_ngram:     15
+  repetition_max_count: 5
+  include_ref_text:     false
+  itn:
+    enabled: false
+
+expected_language: "mt"

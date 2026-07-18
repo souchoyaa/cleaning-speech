@@ -1,0 +1,25 @@
+# asr_join CONFLICT-RESOLVE — VoxPopuli it (Task #8, separate from the ITN run).
+# parakeet (rover.text) vs reference → WER/CER; resolve disagreements (WER>gate)
+# via gemma. Reads parakeet from input_root, writes a FRESH merged.jsonl to
+# merge_output_dir (voxpopuli_resolve/, leaving voxpopuli_run/ ITN output intact).
+dataset: it
+input_root:       "/capstor/scratch/cscs/sgodey/data_selection_runs/voxpopuli/it"
+merge_output_dir: "/capstor/scratch/cscs/sgodey/voxpopuli_resolve/it"
+
+slots:
+  parakeet:
+    dir_name:   "parakeet"
+    payload_at: "parakeet"
+
+resolve:
+  gate_wer:        0.0       # resolve every cut where parakeet != reference
+  api_model:       "google/gemma-4-26B-A4B-it-${USER}"   # api_base via ITN_API_BASE env
+  concurrency:     128
+  timeout_seconds: 90.0
+  chunk_size:      2000
+  max_tokens:      1024
+  min_len_ratio:   0.25
+  max_len_ratio:   3.0
+  circuit_break_fraction: 0.8
+
+expected_language: "it"

@@ -1,0 +1,51 @@
+# asr_canary template — consumed by pipeline/main.py batch mode.
+#
+# Placeholders {name}, {language}, {shar_dir}, {output_root} are
+# substituted per-dataset by the orchestrator. The alignment model path
+# is also templated by {language} so each dataset gets the right NFA
+# checkpoint (stt_{language}_fastconformer_hybrid_large_pc).
+#
+# Layout: Canary writes to <output_root>/<name>/asr_plain_output/canary/.
+
+shar_dir:           "{shar_dir}"
+output_dir:         "{output_root}/{name}"
+target_sample_rate: 16000
+
+loader:
+  max_batch_duration: 1200.0
+  num_buckets:        20
+  bucket_buffer_size: 30000
+  decode_num_workers: 16
+  prefetch_factor:    4
+  sampler_shuffle:    true
+  sampler_seed:       42
+  dataloader_timeout: 300
+
+canary:
+  model:                   "nvidia/canary-1b-v2"
+  nemo_micro_batch_size:   192
+  dtype:                   "bfloat16"
+  language:                "{language}"
+  compute_word_timestamps: true
+
+# NFA alignment — per-language checkpoint. Set ``enabled: false`` if your
+# batch covers languages without an NFA checkpoint (the orchestrator
+# would fail to load the model otherwise).
+alignment:
+  enabled:               true
+  model:                 "nvidia/stt_{language}_fastconformer_hybrid_large_pc"
+  nemo_micro_batch_size: 16
+  dtype:                 "bfloat16"
+
+vad:
+  enabled:        true
+  model:          "nvidia/frame_vad_multilingual_marblenet_v2.0"
+  threshold:      0.5
+  min_speech_ms:  250
+  min_silence_ms: 250
+  skip_if_below:  null
+
+runner:
+  heartbeat_seconds:  5.0
+  flush_every:        100
+  writer_queue_size:  1024

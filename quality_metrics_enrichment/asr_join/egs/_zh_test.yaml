@@ -1,0 +1,28 @@
+input_root: "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/Result/quality_metrics/test_cv_zh_validation"
+
+slots:
+  qwen:
+    dir_name:   "qwen"
+    payload_at: null
+
+rover:
+  primary:              "qwen"
+  voting:               "majority"
+  timestamp_source:     null
+  repetition_ngram:     15
+  repetition_max_count: 5
+  include_ref_text:     false
+
+  itn:
+    enabled: true
+    api_base:  ""                       # auto-discovered
+    api_model: "google/gemma-4-E4B-it-${USER}"
+    concurrency:      64
+    timeout_seconds:  60.0
+    chunk_size:       500
+    progress_every:   500
+    min_len_ratio:    0.10
+    max_len_ratio:    4.0
+    circuit_break_fraction: 0.8
+
+expected_language: "zh"

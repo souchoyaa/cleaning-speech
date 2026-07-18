@@ -1,0 +1,61 @@
+# asr_canary — VoxPopuli pilot, multilang (de + mt).
+#
+# de = all-3 group, mt = subset group; canary runs for BOTH (covers all 23).
+# One SLURM job iterates the languages; canary.language is set per-loop.
+#
+# Per-lang output: <output_dir>/<lang>/quality_asr/canary/canary_rank_*.jsonl
+#
+# Alignment (NFA) is DISABLED: the per-language NFA checkpoints
+# (stt_{lang}_fastconformer_hybrid_large_pc) do not exist for most of the
+# 23 VoxPopuli langs (e.g. mt). canary-1b-v2's own word timestamps
+# (compute_word_timestamps) feed ROVER's timestamp_source=canary.
+
+# ===== multi-language driver =====
+language_split_dir:        "/capstor/scratch/cscs/sgodey/dedup_pipeline_test/voxpopuli_pilot"
+languages:                 ["de", "mt"]
+language_subdir_template:  "{lang}"
+
+# ===== common =====
+output_dir:         "/capstor/scratch/cscs/sgodey/dedup_pipeline_test/voxpopuli_pilot_out"
+target_sample_rate: 16000
+
+# ===== loader / dynamic bucketing =====
+loader:
+  max_batch_duration: 1200.0
+  num_buckets:        20
+  bucket_buffer_size: 30000
+  decode_num_workers: 16
+  prefetch_factor:    4
+  sampler_shuffle:    true
+  sampler_seed:       42
+  dataloader_timeout: 300
+
+# ===== canary (AED) — language set per-loop by the multilang driver =====
+canary:
+  model:                   "nvidia/canary-1b-v2"
+  nemo_micro_batch_size:   192
+  dtype:                   "bfloat16"
+  compute_word_timestamps: true   # native canary timestamps (no NFA)
+  # language: omitted → set per (lang) by the loop
+
+# ===== alignment (NFA) — DISABLED (no per-lang checkpoints for VoxPopuli set) =====
+alignment:
+  enabled:               false
+  model:                 "nvidia/stt_{lang}_fastconformer_hybrid_large_pc"
+  nemo_micro_batch_size: 16
+  dtype:                 "bfloat16"
+
+# ===== vad (Frame-VAD MarbleNet v2.0) =====
+vad:
+  enabled:        true
+  model:          "nvidia/frame_vad_multilingual_marblenet_v2.0"
+  threshold:      0.5
+  min_speech_ms:  250
+  min_silence_ms: 250
+  skip_if_below:  null
+
+# ===== runner =====
+runner:
+  heartbeat_seconds:  5.0
+  flush_every:        100
+  writer_queue_size:  1024

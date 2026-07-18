@@ -1,0 +1,59 @@
+# asr_canary — single-shar config (CV-FR train split).
+#
+# Same shape as asr_parakeet/egs/cv_fr.yaml, swapping Parakeet for Canary
+# and adding an inline NFA alignment block. Per-rank JSONL lands at:
+#   <output_dir>/canary/canary_rank_{0000..0003}.jsonl
+# Per-rank cutid sidecar: <jsonl>.cutids
+
+# ===== common =====
+shar_dir:           "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/commonvoice/fr_train"
+output_dir:         "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/Result/quality_metrics/cv_fr_train"
+target_sample_rate: 16000
+
+# ===== loader / dynamic bucketing =====
+loader:
+  max_batch_duration: 1200.0
+  num_buckets:        20
+  bucket_buffer_size: 30000
+  decode_num_workers: 16
+  prefetch_factor:    4
+  sampler_shuffle:    true
+  sampler_seed:       42
+  dataloader_timeout: 300
+
+# ===== canary (AED — needs source/target_lang as scalar prompt slots) =====
+# Canary AED is "monolingual per call": source_lang and target_lang are
+# scalar prompts, so the worker buckets by language internally. For a
+# single-language shar, pin once here. For multilang, unset and the loop
+# overrides per (lang, split).
+canary:
+  model:                   "nvidia/canary-1b-v2"
+  nemo_micro_batch_size:   192   # auto-halves on OOM split-retry
+  dtype:                   "bfloat16"
+  language:                "fr"
+  compute_word_timestamps: true  # off only if you also disable alignment
+
+# ===== alignment (NFA forced alignment, inline) =====
+# DISABLED for this ablation pass — we want pure-Canary RTFx as the
+# baseline. Flip ``enabled: true`` to bring NFA back. The model is
+# per-language — {lang} placeholder works in multilang mode.
+alignment:
+  enabled:               false
+  model:                 "nvidia/stt_fr_fastconformer_hybrid_large_pc"
+  nemo_micro_batch_size: 16
+  dtype:                 "bfloat16"
+
+# ===== vad (Frame-VAD MarbleNet v2.0) =====
+vad:
+  enabled:        true
+  model:          "nvidia/frame_vad_multilingual_marblenet_v2.0"
+  threshold:      0.5
+  min_speech_ms:  250
+  min_silence_ms: 250
+  skip_if_below:  null
+
+# ===== runner =====
+runner:
+  heartbeat_seconds:  5.0
+  flush_every:        100
+  writer_queue_size:  1024

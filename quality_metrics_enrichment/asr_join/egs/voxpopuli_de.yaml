@@ -1,0 +1,36 @@
+# asr_join — VoxPopuli run, German, 1-slot (parakeet only) + ITN.
+# Phase-2 start: we only have parakeet ASR for de so far. ROVER with a single
+# hypothesis ⇒ rover.text = parakeet text; the gemma-4-26B-A4B-it ITN pass adds
+# rover.text_itn (inverse text normalization). Output:
+#   <input_root>/quality_asr/rover/merged.jsonl
+dataset: de
+
+input_root: "/capstor/scratch/cscs/sgodey/data_selection_runs/voxpopuli/de"
+
+slots:
+  parakeet:
+    dir_name:   "parakeet"
+    payload_at: "parakeet"
+
+rover:
+  primary:              "parakeet"   # only slot
+  voting:               "majority"
+  timestamp_source:     "parakeet"
+  repetition_ngram:     15
+  repetition_max_count: 5
+  include_ref_text:     false
+
+  itn:
+    enabled: true
+    # api_base set at runtime via ITN_API_BASE=http://<nid>:8080
+    api_base:  "http://REPLACE-WITH-ITN-NID:8080"
+    api_model: "google/gemma-4-26B-A4B-it-${USER}"
+    concurrency:      128
+    timeout_seconds:  60.0
+    chunk_size:       2000
+    progress_every:   5000
+    min_len_ratio: 0.25
+    max_len_ratio: 3.0
+    circuit_break_fraction: 0.8
+
+expected_language: "de"

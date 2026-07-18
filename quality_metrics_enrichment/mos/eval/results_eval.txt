@@ -1,0 +1,82 @@
+MOS-quality benchmark — full results on the LibriSpeech eval build
+=====================================================================
+Dataset : /capstor/scratch/cscs/sgodey/dedup_pipeline_test/librispeech_eval/en
+          190,319 cuts = 132,553 originals + 39,766 dedup synth + 18,000 MOS block
+Scored  : all 4 metrics (UTMOS, SQUIM, DNSMOS-nisqa, AudioBox), 4xGH200, 0 failures
+Analyze : mos/eval/analyze_mos_eval.py  (clean = 132,553 real originals)
+
+READING: AUROC = P(metric ranks a clean original above the degraded cut).
+1.00 perfect, 0.50 no separation, <0.50 inverted (metric rates degraded HIGHER).
+
+HEADLINE — no single metric covers every failure mode (the benchmark's purpose):
+  * naturalness (Griffin-Lim, clean SNR) : UTMOS 1.00 across severities, but
+    DNSMOS blind (0.76; -> 0.58 at gl32).            => keep UTMOS
+  * telephony (8 kHz band-limit)         : only AudioBox PQ/CE catch (0.84/0.83);
+    DNSMOS 0.60, SI-SDR 0.62 blind.                  => keep AudioBox
+  * clipping                             : DNSMOS 0.87 best; PESQ misses (0.65).
+  * crosstalk                            : STOI/UTMOS 0.98/0.99; DNSMOS weaker.
+  * awgn / real_noise                    : DNSMOS/PESQ/PQ robust; SI-SDR & STOI
+    collapse at mild noise (SI-SDR 0.52-0.65 at >=25 dB).
+  * music                                : PC = 0.00 (perfect INVERTED detector) —
+    PC is a content descriptor, never a quality penalty.
+  * clean_control                        : all metrics ~0.50 — FLAC round-trip is
+    transparent (sanity check passes).
+
+================================================================================
+AUROC per family (clean originals vs family).  * = designed primary_axis.
+================================================================================
+family            n  lowQ    utmos     stoi     pesq   si_sdr   dnsmos       CE       CU       PC       PQ   primary
+clean_control  1080    0%    0.52     0.49     0.51     0.52     0.50     0.51     0.51     0.49     0.51    -
+awgn           2160   49%    0.91     0.86     0.95     0.80     0.97*    0.94     0.96     0.03     0.97    dnsmos
+real_noise     2880   49%    0.86     0.83     0.89     0.80     0.75*    0.85     0.80     0.08     0.77    dnsmos
+music          2160   59%    0.97     0.96     0.99     0.95     0.92     0.58     0.72     0.00     0.57    audiobox_PC
+reverb         2160    0%    0.97*    0.93     0.91     0.90     0.92     0.90     0.86     0.25     0.85    utmos
+crosstalk      1800   48%    0.99     0.98*    0.98     0.95     0.85     0.92     0.81     0.01     0.78    stoi
+clipping       1800   51%    0.82     0.65     0.65     0.68     0.87*    0.82     0.80     0.38     0.83    dnsmos
+telephony      1800  100%    0.74     0.72     0.66     0.62*    0.60     0.83     0.78     0.47     0.84    si_sdr
+naturalness    2160  100%    1.00*    1.00     0.99     0.99     0.76     0.93     0.88     0.43     0.91    utmos
+
+================================================================================
+COVERAGE — metrics that CATCH each family (AUROC>=0.80) vs MISS (<0.65).
+================================================================================
+  awgn          catch: utmos, stoi, pesq, dnsmos, CE, CU, PQ        miss: PC
+  real_noise    catch: utmos, stoi, pesq, si_sdr, CE                miss: PC
+  music         catch: utmos, stoi, pesq, si_sdr, dnsmos            miss: CE, PC, PQ
+  reverb        catch: utmos, stoi, pesq, si_sdr, dnsmos, CE, CU, PQ miss: PC
+  crosstalk     catch: utmos, stoi, pesq, si_sdr, dnsmos, CE, CU    miss: PC
+  clipping      catch: utmos, dnsmos, CE, CU, PQ                    miss: pesq, PC
+  telephony     catch: CE, PQ                                       miss: si_sdr, dnsmos, PC
+  naturalness   catch: utmos, stoi, pesq, si_sdr, CE, CU, PQ        miss: PC
+
+================================================================================
+AUROC vs SEVERITY (numeric-severity families)
+================================================================================
+  awgn (primary=dnsmos):
+    sev=0     dnsmos=1.00 si_sdr=1.00 pesq=1.00 utmos=1.00 PQ=1.00 PC=0.00
+    sev=15    dnsmos=1.00 si_sdr=0.94 pesq=1.00 utmos=0.99 PQ=1.00 PC=0.00
+    sev=25    dnsmos=0.98 si_sdr=0.65 pesq=0.98 utmos=0.90 PQ=0.99 PC=0.02
+    sev=40    dnsmos=0.82 si_sdr=0.52 pesq=0.69 utmos=0.63 PQ=0.79 PC=0.17
+  real_noise (primary=dnsmos):
+    sev=0     dnsmos=0.95 si_sdr=1.00 pesq=1.00 utmos=1.00 PQ=0.91 PC=0.01
+    sev=15    dnsmos=0.81 si_sdr=0.94 pesq=0.97 utmos=0.96 PQ=0.85 PC=0.01
+    sev=25    dnsmos=0.66 si_sdr=0.67 pesq=0.87 utmos=0.81 PQ=0.71 PC=0.08
+    sev=40    dnsmos=0.55 si_sdr=0.51 pesq=0.60 utmos=0.58 PQ=0.55 PC=0.31
+  music (primary=audiobox_PC):
+    sev=0     dnsmos=0.99 si_sdr=1.00 pesq=1.00 utmos=1.00 PQ=0.56
+    sev=10    dnsmos=0.93 si_sdr=0.97 pesq=0.99 utmos=0.99 PQ=0.58
+    sev=20    dnsmos=0.81 si_sdr=0.86 pesq=0.96 utmos=0.89 PQ=0.58
+  crosstalk (primary=stoi):
+    sev=0     stoi=1.00 dnsmos=0.89 si_sdr=0.99 pesq=1.00 utmos=1.00 PQ=0.71
+    sev=10    stoi=0.99 dnsmos=0.86 si_sdr=0.97 pesq=0.99 utmos=1.00 PQ=0.83
+    sev=20    stoi=0.93 dnsmos=0.78 si_sdr=0.86 pesq=0.95 utmos=0.97 PQ=0.79
+  clipping (primary=dnsmos):
+    sev=0.1   dnsmos=0.99 si_sdr=0.87 pesq=0.84 utmos=0.99 PQ=0.99 PC=0.29
+    sev=0.2   dnsmos=0.95 si_sdr=0.72 pesq=0.66 utmos=0.91 PQ=0.92 PC=0.36
+    sev=0.3   dnsmos=0.84 si_sdr=0.60 pesq=0.57 utmos=0.79 PQ=0.78 PC=0.42
+    sev=0.5   dnsmos=0.70 si_sdr=0.53 pesq=0.52 utmos=0.58 PQ=0.62 PC=0.43
+  telephony (primary=si_sdr):
+    sev=8000  si_sdr=0.62 dnsmos=0.60 pesq=0.66 utmos=0.74 PQ=0.84 PC=0.47
+  naturalness (primary=utmos):
+    sev=1     utmos=1.00 dnsmos=0.95 si_sdr=1.00 pesq=1.00 PQ=0.97 PC=0.44
+    sev=8     utmos=1.00 dnsmos=0.72 si_sdr=0.99 pesq=0.99 PQ=0.91 PC=0.41
+    sev=32    utmos=0.98 dnsmos=0.58 si_sdr=0.97 pesq=0.98 PQ=0.80 PC=0.42

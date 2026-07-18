@@ -1,0 +1,69 @@
+# LibriSpeech-synthetic dedup — MinHash-perm (containment). text_source=rover field=text
+shar_dirs:
+  - /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval_clean/en
+dataset_overrides:
+  /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval_clean/en: synth
+output_dir: /capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval_clean/dedup/ls_rover/dedup_out
+
+target_sample_rate: 16000
+max_batch_duration: 1500.0
+num_buckets: 20
+bucket_buffer_size: 10000
+decode_num_workers: 8
+prefetch_factor: 4
+truncate_secs: 30.0
+
+manifest:
+  inner_workers: 16
+  min_text_chars: 12
+  drop_empty_text: true
+  strip_punctuation: true
+  text_source: rover
+  rover_text_path: "/capstor/scratch/cscs/sgodey/data_selection_runs/benchmark/eval_clean/quality/quality_asr/rover/merged.jsonl"
+  rover_text_field: "text"
+
+text_dedup:
+  backend: cudf
+  ngram_size: 12
+  num_permutations: 128
+  num_bands: 32
+  band_width: 4
+  similarity: containment
+  containment_threshold: 0.80
+  containment_prefilter: 0.20
+  min_shared: 6
+  small_bucket_threshold: 200
+  max_bucket_size: 10000
+  exact_verify_workers: 64
+  candidate_fraction_max: 0.97
+  seed: 1
+  save_candidate_edges: true
+
+audio_fingerprint:
+  mel_n_bins: 64
+  mel_f_min: 200
+  mel_f_max: 3000
+  mel_frame_rate: 40
+  hash_frame_rate: 12.5
+  m_frames: 4
+  M_frames: 20
+  time_window: 9
+  energy_factor: 1.0
+  freq_top_k: 3
+  keypoints_per_bin: 2
+  peak_mode: global
+  local_norm_time: 41
+  silence_rel_floor: 0.02
+
+audio_match:
+  min_keypoints: 4
+  match_min_abs: 4
+  match_frac: 0.10
+  min_relative_match: 0.10
+  strong_match_frac: 0.85
+  hist_tolerance: 1
+  small_cluster_max: 200
+  huge_cluster_max: 10000
+  pre_filter_min_shared: 4
+  workers: 16
+  save_match_edges: true

@@ -1,0 +1,24 @@
+# MOS scoring — VoxPopuli pilot, Maltese (subset group; retention uses MOS only).
+# dataset id = language code (must match asr_join + dedup dataset_overrides).
+dataset: mt
+shar_dir:           "/capstor/scratch/cscs/sgodey/dedup_pipeline_test/voxpopuli_pilot/mt"
+output_dir:         "/capstor/scratch/cscs/sgodey/dedup_pipeline_test/voxpopuli_pilot_out/mt/quality_mos"
+target_sample_rate: 16000
+unique_output_subdir: false
+fail_fast_oom: true
+max_batch_duration: 1800.0
+num_buckets:        20
+bucket_buffer_size: 10000
+quadratic_duration: 60.0
+decode_num_workers: 16
+prefetch_factor:    4
+truncate_secs:      30.0
+use_utmos:        true
+use_squim:        true
+use_dnsmos:       true
+dnsmos_variant:   "nisqa"
+dnsmos_cache_dir: "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/caches/dnsmos"
+use_audiobox:        true
+audiobox_sub_batch:  128
+use_compile:  false
+use_profiler: false

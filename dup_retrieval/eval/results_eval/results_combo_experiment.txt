@@ -1,0 +1,39 @@
+Metric-combination experiment for retention (eval benchmark, 2026-06-23)
+Data: librispeech_eval/en (8000 clean originals sampled, 18000 MOS cuts)
+
+clean sample: 8000 | MOS cuts: 18000
+
+============================================================================================
+CASE 1 — keep-best accuracy: combiner(clean_ref) > combiner(degraded copy)
+  (paired by mos_eval.clean_ref_id; only pairs where the copy IS degraded)
+============================================================================================
+combiner            overall    awgn clippin crossta   music natural real_no  reverb telepho
+dnsmos(z)             90.1%     99%     96%     94%     97%     88%     82%     96%     71%
+utmos(z)              98.5%    100%     95%    100%    100%    100%     95%    100%    100%
+pesq(z)               94.9%    100%     78%    100%    100%    100%     95%     96%     88%
+wsum .3u.4d.2aes      98.5%    100%     99%    100%     99%    100%     95%     99%     98%
+mean_z(6)             99.2%    100%     98%    100%    100%    100%     97%     99%    100%
+mean_z(div5)          99.1%    100%     99%    100%    100%    100%     96%     99%    100%
+MIN_z(div5)           96.1%     99%     93%    100%     97%    100%     90%     98%     94%
+0.5mean+0.5min        98.5%    100%     98%    100%     99%    100%     95%     99%     99%
+
+============================================================================================
+CASE 2 — unique-sample gate: separate expect_low_quality from clean
+  AUROC, then per-family RECALL at the threshold that keeps 90% of clean cuts
+============================================================================================
+combiner            AUROC  recall@90%spec ->    awgn clippin crossta   music natural real_no telepho
+dnsmos(z)            0.83                  100%     93%     64%     91%     44%     72%     16%
+utmos(z)             0.94                  100%     87%    100%     99%    100%     96%     31%
+pesq(z)              0.91                  100%     32%    100%    100%     99%     98%     22%
+wsum .3u.4d.2aes     0.94                  100%     95%    100%     97%     90%     91%     34%
+mean_z(6)            0.95                  100%     86%    100%    100%    100%     98%     34%
+mean_z(div5)         0.95                  100%     92%    100%     99%     99%     97%     37%
+MIN_z(div5)          0.94                  100%     89%    100%    100%     99%     92%     42%
+0.5mean+0.5min       0.95                  100%     90%    100%    100%     99%     96%     42%
+
+(recall@90%spec = fraction of that family's low-quality cuts flagged while keeping 90% of clean cuts. Higher across ALL families = better gate.)
+
+DESIGN DECISION:
+  Case 1 (duplicates, keep-best)  -> rank by MEAN of z-scored axes  (99.2%)
+  Case 2 (unique, quality gate)   -> gate = 0.5*mean_z + 0.5*min_z  (best family coverage)
+  quality_mode selects active axes: mos | asr | both

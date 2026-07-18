@@ -1,0 +1,175 @@
+# Production config for dup_retrieval pipeline.  Edit shar_dirs + paths.
+#
+# Reference: ~/.claude/plans/precious-booping-goblet.md
+
+# ----- Inputs / outputs ------------------------------------------------------
+shar_dirs:
+  - /users/sgodey/shared/SHAR/stage_2/granary_ytc/en
+  - /users/sgodey/shared/SHAR/stage_2/granary_ytc/fr
+  # add more shars (cross-dataset dedup is automatic via build_cutset merge)
+
+# Optional: explicit dataset tag override per shar_dir.  Falls back to the
+# path-derived heuristic when omitted.
+dataset_overrides: {}
+
+# Optional: when set, dataset name = relpath(shar_dir, dataset_root).
+dataset_root: /users/sgodey/shared/SHAR
+
+output_dir: /scratch/dedup_run/
+
+# ----- Loader knobs (Stage D, forwarded to SharAudioLoader) -----------------
+target_sample_rate: 16000
+max_batch_duration: 1500.0
+num_buckets:        20
+bucket_buffer_size: 10000
+decode_num_workers: 32
+prefetch_factor:    6
+truncate_secs:      30.0
+
+# ----- Stage A — manifest ----------------------------------------------------
+manifest:
+  inner_workers:         32     # multiprocessing.Pool size *within* a rank
+  min_text_chars:        4
+  drop_empty_text:       true
+  # Strip punctuation from the dedup KEY (normalized_text) only — the real
+  # transcript (text) is untouched.  Collapses formatting-only duplicates
+  # (case/punctuation/whitespace) to identical keys so they cluster at the
+  # standard high Jaccard, without lowering the threshold (which would risk
+  # giant clusters).  Validated on the synthetic test: punct-variant recall
+  # 9% -> 100% at jaccard 0.70, cluster sizes unchanged.  Short texts are now
+  # padded (not dropped) by text_dedup, so this is pure recall upside.
+  strip_punctuation:     true
+
+# ----- Stage C — fuzzy dedup (sole text "flag" first pass) -------------------
+# Exact dedup (former Stage B) was removed: identical normalized_text collides in
+# every LSH band -> Jaccard 1.0, so text_dedup already captures exact dups.
+text_dedup:
+  # backend: numpy (CPU reference) | cudf (single-GPU RAPIDS, default on cluster;
+  # fits ~50M cuts on one 120 GB GH200) | dask_cudf (multi-GPU dask-cuda for 50M+).
+  # Both GPU backends run MinHash + LSH + Jaccard verify on GPU; connected
+  # components use cuGraph when present (added to the image) else scipy on CPU.
+  backend:                  cudf
+  ngram_size:               24
+  num_permutations:         260       # must be >= num_bands * band_width (20*13)
+  num_bands:                20
+  band_width:               13
+  jaccard_threshold:        0.80
+  small_bucket_threshold:   200       # ≤ this → all-pairs verify; > this → anchor fan-out
+  max_bucket_size:          10000     # buckets above this size are dropped
+  gpu_verify_chunk:         2000000   # cudf backend: pairs per GPU Jaccard chunk
+  # --- GPU backend knobs (cudf / dask_cudf) ---
+  rmm_pool:                 true      # RMM pool allocator (avoids cudaMalloc churn)
+  rmm_managed_memory:       false     # set true to oversubscribe GPU mem via UVM
+  use_cugraph_cc:           true      # connected components via cuGraph if installed (else scipy)
+  rmm_pool_size:            "70GB"    # dask_cudf: per-GPU RMM pool size
+  dask_cuda_visible_devices: null     # dask_cudf: e.g. "0,1,2,3"; null = all visible
+  use_cudf:                 false     # legacy: GPU MinHash for the numpy backend only
+  use_cugraph:              false     # legacy (unused by cudf/dask_cudf; see use_cugraph_cc)
+  minhash_chunk_size:       5_000_000
+  candidate_fraction_max:   0.30
+  save_candidate_edges:     false     # debug only
+  refine_chains:            false     # turn on if first-run shows long-chain over-merging
+  strict_jaccard_threshold: 0.85
+  refine_min_size:          10
+  seed:                     1
+  # B2 — exact-Jaccard verify.  When true, LSH only proposes candidates and the
+  # TRUE char-n-gram Jaccard (CPU, parallel) makes the keep/drop call, removing
+  # MinHash estimation noise near the threshold.  The GPU estimate becomes a
+  # recall-safe pre-filter loosened by exact_verify_margin.  Cost is a CPU pass
+  # over the (LSH-prefiltered) candidate set; negligible at <1M cuts.
+  exact_jaccard_verify:     false
+  exact_verify_margin:      0.10     # pre-filter at (jaccard_threshold - margin)
+  exact_verify_workers:     32       # CPU procs for the exact pass (default: all cores)
+
+# ----- Stage D — audio fingerprint (Moshi Appendix B) -----------------------
+audio_fingerprint:
+  mel_n_bins:        64
+  mel_f_min:         200
+  mel_f_max:         3000
+  mel_frame_rate:    40        # Hz
+  hash_frame_rate:   12.5      # Hz (M=20 frames @ 12.5 Hz spans 3.2 s)
+  m_frames:          4
+  M_frames:          20
+  time_window:       9
+  energy_factor:     1.0
+  # #9 — constellation density.  freq_top_k = loudest bands kept per time frame;
+  # keypoints_per_bin = peaks kept per 12.5 Hz t_hash bin.  Both 1 = original
+  # sparse fingerprint.  Raise together (e.g. 3 / 2) to densify so short/degraded
+  # clips clear Stage-E min_keypoints.  Changing these REQUIRES re-fingerprinting.
+  freq_top_k:         1
+  keypoints_per_bin:  1
+  # Keypoint-selection mode.  global = energy vs whole-clip mean (best for FULL-clip
+  # dedup; default).  local = Shazam-style crop-invariant gate (energy vs a TIME-LOCAL
+  # per-band mean) — handles partial_crop / heavy degradation; needs re-fingerprint.
+  peak_mode:          global    # global | local
+  local_norm_time:    41        # local-mean window (frames, odd; ~1s @40Hz) for peak_mode=local
+  silence_rel_floor:  0.02      # local mode: drop peaks below this × the clip's loudest peak
+  # Random-access loader: seek directly to each candidate's audio member using
+  # the Stage-A tar locator instead of streaming whole tars (reads ~candidate
+  # fraction of bytes).  Auto-falls back to the streaming loader if the manifest
+  # has no locator columns.  Strictly read-only on the source tars.
+
+# ----- Stage E — audio matching ----------------------------------------------
+audio_match:
+  min_keypoints:        4
+  match_min_abs:        4
+  match_frac:           0.10   # from eval sweep (purity 100% on synthetic eval @0.10); on a real/
+  min_relative_match:   0.10   # noisier corpus monitor precision — raise toward 0.15–0.30 if it erodes
+  strong_match_frac:    0.85   # near-total keypoint match bypasses the span gate (whole-clip dup)
+  hist_tolerance:       1      # ±1 frame (~80ms) absorbs codec/resample timing jitter (B1)
+  small_cluster_max:    200
+  huge_cluster_max:     10000
+  pre_filter_min_shared: 4
+  workers:              32
+  save_match_edges:     false   # debug only
+
+# ----- Stage F — retention ---------------------------------------------------
+retention:
+  quality_schema: quality_v1
+  # Which quality signals to use: mos | asr | both.  Selects the active axes for
+  # BOTH the duplicate keep-best ranking and the unique-sample gate.
+  quality_mode: both
+  # CASE 1 (duplicates): keep-best ranks by mean(z of active axes) — a robust
+  # consensus that beat DNSMOS-weighted-sum / any single metric (99.2% keep-best;
+  # mos/eval/results_combo_experiment.txt).  AudioBox OVL = mean(CE,CU,PQ) (no PC).
+  # CASE 2 (unique): gate_score = 0.5*mean(z) + 0.5*min(z); cuts in the bottom
+  # `gate_percentile` % are flagged low_quality (and dropped if gate_drop).
+  gate_percentile: 10      # null disables the unique-sample gate
+  gate_drop: false         # true -> drop flagged UNIQUE (non-duplicate) cuts
+  # `weights` are used only for the optional absolute per_dataset_quality_floor
+  # (a raw, un-normalized weighted sum on native metric scales).
+  weights:
+    utmos:    0.30
+    dnsmos:   0.40
+    audiobox: 0.20
+    rover:    0.10
+    language: 0.00
+  dnsmos_variant: nisqa
+  # Text-cluster size cap (selection stage): if a text-induced cluster still
+  # has more than this many cuts after acoustic-duplicate removal, keep only
+  # the top-X by quality score and drop the rest (even if their audio differs).
+  # null disables the cap.  Tune to your training budget / dataset balance.
+  max_cluster_size: 100
+  per_dataset_quality_floor:
+    granary_ytc/en: 4.0
+    granary_ytc/fr: 3.5
+  preferred_dataset_order:
+    - librispeech_clean
+    - granary_ytc/en
+  # Optional explicit search paths for the JSONLs.
+  # quality_search_paths:
+  #   - /users/sgodey/.../quality_assesment/results
+
+# ----- Stage G — apply (clone-only: emit the augmented dataset) --------------
+# Writes a NEW dataset at output_shar_dir: fresh cuts.*.jsonl.gz carrying the
+# augmented metadata (cut.custom = dedup + quality + keep), with the audio
+# recording.*.tar SYMLINKED back to the originals.  The original tars and cuts
+# are NEVER modified.  in_place (rewriting originals) is hard-gated off.
+apply_to_shar:
+  enabled:         true
+  output_shar_dir: /scratch/dedup_run/output_shar   # must be OUTSIDE every input shar
+  link_mode:       symlink     # symlink | hardlink | copy  (symlink = originals untouched)
+  in_place:        false       # MUST stay false — clone-only policy
+  allow_in_place:  false       # extra gate; in_place also needs this true to ever run
+  include_quality_metrics: true  # also inject raw metrics from quality_flat.parquet
+  workers:         32

@@ -1,0 +1,31 @@
+# asr_join — VoxPopuli run, Spanish, 1-slot (parakeet) + ITN (overnight batch).
+# rover.text = parakeet text; gemma-4-26B-A4B-it adds rover.text_itn.
+dataset: es
+
+input_root: "/capstor/scratch/cscs/sgodey/data_selection_runs/voxpopuli/es"
+
+slots:
+  parakeet:
+    dir_name:   "parakeet"
+    payload_at: "parakeet"
+
+rover:
+  primary:              "parakeet"
+  voting:               "majority"
+  timestamp_source:     "parakeet"
+  repetition_ngram:     15
+  repetition_max_count: 5
+  include_ref_text:     false
+  itn:
+    enabled: true
+    api_base:  "http://REPLACE-WITH-ITN-NID:8080"   # set via ITN_API_BASE env
+    api_model: "google/gemma-4-26B-A4B-it-${USER}"
+    concurrency:      128       # 4 langs share one DP=4 server → keep per-feeder modest
+    timeout_seconds:  90.0
+    chunk_size:       2000
+    progress_every:   10000
+    min_len_ratio: 0.25
+    max_len_ratio: 3.0
+    circuit_break_fraction: 0.8
+
+expected_language: "es"

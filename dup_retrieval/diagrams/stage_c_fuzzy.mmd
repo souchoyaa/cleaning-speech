@@ -1,0 +1,66 @@
+%% Stage C — fuzzy text dedup detail.
+%% Verified-pair single-linkage clustering with optional refinement.
+
+flowchart TB
+    subgraph IN [Input]
+        IN_M[manifest/part_*.parquet<br/>dataset, cut_id, normalized_text]
+    end
+
+    subgraph CHUNK [Chunked MinHash compute]
+        C1[Loop over manifest parts]
+        C2[Char n-grams n=24]
+        C3[256 universal hash perms<br/>Mersenne-61 mod, 32-bit min]
+        C4[minhash_part_NNNNN.parquet<br/>≤ 5M cuts/chunk]
+    end
+
+    subgraph LSH [LSH banding]
+        L1[load all signatures]
+        L2[20 bands × 13 rows<br/>xxhash band → bucket_id]
+        L3[bucket index<br/>(band, bucket) → list of row indices]
+    end
+
+    subgraph MERGE [Verified-pair bucket merge]
+        M1{bucket size}
+        M_SMALL[≤ 200<br/>all-pairs Jaccard verify]
+        M_MED[201 … max_bucket_size<br/>anchor fan-out: smallest as anchor]
+        M_HUGE[> max_bucket_size<br/>DROP]
+        M_VERIFY[Jaccard = (sig_a == sig_b).mean()<br/>≥ jaccard_threshold?]
+        M_UF[union-find merge across all bands]
+    end
+
+    subgraph REFINE [Optional chain refinement]
+        R1{cluster size > refine_min_size?}
+        R_PASS[carry forward]
+        R_STRICT[recompute pairwise at strict_jaccard_threshold<br/>re-CC inside the cluster]
+    end
+
+    subgraph CC [Connected components extraction]
+        CC1[union-find roots → cluster_id]
+        CC2[size > 1 only → text_clusters.parquet]
+        CC3{candidate_fraction<br/>≤ candidate_fraction_max?}
+        CC_OK[continue to Stage D]
+        CC_ABORT[ABORT — inspect why text dedup is so lenient]
+    end
+
+    IN_M --> C1 --> C2 --> C3 --> C4
+    C4 --> L1 --> L2 --> L3
+    L3 --> M1
+    M1 -- small --> M_SMALL --> M_VERIFY
+    M1 -- medium --> M_MED --> M_VERIFY
+    M1 -- huge --> M_HUGE
+    M_VERIFY -- ≥ threshold --> M_UF
+    M_UF --> R1
+    R1 -- yes --> R_STRICT --> CC1
+    R1 -- no  --> R_PASS --> CC1
+    CC1 --> CC2 --> CC3
+    CC3 -- yes --> CC_OK
+    CC3 -- no  --> CC_ABORT
+
+    classDef store fill:#ffe4b5,stroke:#a05a00,color:#222;
+    classDef cpu   fill:#dffadc,stroke:#1c6d1c,color:#222;
+    classDef ctrl  fill:#f3e0ff,stroke:#5a1c8b,color:#222;
+    classDef warn  fill:#ffd5d5,stroke:#a30000,color:#222;
+    class IN_M,C4 store;
+    class C1,C2,C3,L1,L2,L3,M_SMALL,M_MED,M_VERIFY,M_UF,R_STRICT,R_PASS,CC1,CC2 cpu;
+    class M1,R1,CC3 ctrl;
+    class M_HUGE,CC_ABORT warn;

@@ -1,0 +1,48 @@
+# asr_join — multi-language merge + ROVER.
+#
+# For each language in ``languages`` (or auto-discovered from input_root),
+# the per-slot input becomes <input_root>/<lang>/asr_plain_output/<slot>/...
+# and the output lands at <merge_output_dir>/<lang>/asr_agg/rover/merged.jsonl.
+#
+# expected_language is derived per iteration (= the loop language), so the
+# language_consistency check is automatically correct.
+
+# Marker for multilang mode — its value isn't used to read inputs (the
+# layout convention is <input_root>/<lang>/asr_plain_output/<slot>/).
+# Kept for parity with asr_parakeet/asr_canary configs.
+language_split_dir: "/capstor/scratch/cscs/sgodey/audio-datasets/SHAR/stage_2/commonvoice22_sidon"
+languages: ["en", "es", "fr", "pt", "de", "nl", "it"]
+
+# Single input_root (the dataset family directory). Per-lang root is
+# <input_root>/<lang>; ASR slots live under <lang>/asr_plain_output/<slot>/.
+input_root: "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/Result/quality_metrics/commonvoice22_sidon"
+
+slots:
+  parakeet: {dir_name: "parakeet", payload_at: "parakeet"}
+  canary:   {dir_name: "canary",   payload_at: "canary"}
+  qwen:     {dir_name: "qwen",     payload_at: null}
+
+# Defaults to input_root (writes asr_agg/rover/ alongside the inputs).
+# merge_output_dir: "/capstor/.../Result/quality_metrics/commonvoice22_sidon"
+
+rover:
+  primary:              "qwen"
+  voting:               "majority"
+  timestamp_source:     "canary"
+  repetition_ngram:     15
+  repetition_max_count: 5
+  include_ref_text: false
+
+  itn:
+    enabled: true
+    api_base:  "http://REPLACE-WITH-ITN-NID:8080"
+    api_model: "google/gemma-4-E4B-it-${USER}"
+    concurrency:      64       # E4B is ~2× heavier than E2B — halve from 128
+    timeout_seconds:  60.0
+    chunk_size:       2000
+    progress_every:   5000
+    min_len_ratio: 0.25
+    max_len_ratio: 3.0
+    circuit_break_fraction: 0.8
+
+# expected_language: omitted → derived per language in the loop.

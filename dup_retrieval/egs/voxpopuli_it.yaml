@@ -1,0 +1,103 @@
+# VoxPopuli run — per-language dedup + retention, it (Phase 1: MOS-only).
+# quality_mode=mos: keep-best + gate use ONLY MOS metrics (no ASR yet).
+# Full-size real shards → 4-rank torchrun (no single-process hack needed).
+shar_dirs:
+  - /capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/voxpopuli_asr/it
+dataset_overrides:
+  /capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/voxpopuli_asr/it: it
+output_dir: /capstor/scratch/cscs/sgodey/data_selection_runs/voxpopuli/it/dedup_out
+
+target_sample_rate: 16000
+max_batch_duration: 1500.0
+num_buckets:        20
+bucket_buffer_size: 10000
+decode_num_workers: 8
+prefetch_factor:    4
+truncate_secs:      30.0
+
+manifest:
+  inner_workers:         16
+  min_text_chars:        4
+  drop_empty_text:       true
+  strip_punctuation:     true
+
+text_dedup:
+  backend:                  cudf
+  ngram_size:               16
+  num_permutations:         260
+  num_bands:                20
+  band_width:               13
+  jaccard_threshold:        0.70
+  small_bucket_threshold:   200
+  max_bucket_size:          10000
+  gpu_verify_chunk:         2000000
+  rmm_pool:                 true
+  rmm_managed_memory:       false
+  use_cugraph_cc:           true
+  use_cudf:                 false
+  use_cugraph:              false
+  minhash_chunk_size:       5000000
+  candidate_fraction_max:   0.97
+  save_candidate_edges:     true
+  refine_chains:            false
+  strict_jaccard_threshold: 0.85
+  refine_min_size:          10
+  seed:                     1
+  exact_jaccard_verify:     true
+  exact_verify_margin:      0.10
+  exact_verify_workers:     64
+
+audio_fingerprint:
+  mel_n_bins:        64
+  mel_f_min:         200
+  mel_f_max:         3000
+  mel_frame_rate:    40
+  hash_frame_rate:   12.5
+  m_frames:          4
+  M_frames:          20
+  time_window:       9
+  energy_factor:     1.0
+  freq_top_k:         3
+  keypoints_per_bin:  2
+  peak_mode:          global
+  local_norm_time:    41
+  silence_rel_floor:  0.02
+
+audio_match:
+  min_keypoints:        4
+  match_min_abs:        4
+  match_frac:           0.10
+  min_relative_match:   0.10
+  strong_match_frac:    0.85
+  hist_tolerance:       1
+  small_cluster_max:    200
+  huge_cluster_max:     10000
+  pre_filter_min_shared: 4
+  workers:              16
+  save_match_edges:     true
+
+quality_ingest:
+  quality_search_paths:
+    - /capstor/scratch/cscs/sgodey/data_selection_runs/voxpopuli/it   # quality_mos/part_*.jsonl (ASR added later)
+
+retention:
+  quality_schema: quality_v1
+  quality_mode:   mos
+  gate_percentile: 10
+  gate_drop:       true
+  weights:
+    utmos:    0.30
+    dnsmos:   0.40
+    audiobox: 0.20
+    rover:    0.10
+    language: 0.00
+  dnsmos_variant: nisqa
+  max_cluster_size: 100
+  per_dataset_quality_floor: {}
+  preferred_dataset_order: []
+
+apply_to_shar:
+  enabled: true
+  link_mode: symlink
+  in_place: false
+  output_shar_dir: /capstor/scratch/cscs/sgodey/data_selection_runs/voxpopuli/it/dedup_out/output_shar

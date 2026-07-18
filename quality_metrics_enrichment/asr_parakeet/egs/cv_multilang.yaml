@@ -1,0 +1,55 @@
+# asr_parakeet — multi-language × multi-split sequential mode.
+#
+# Iterates over each (language, split) pair under `language_split_dir`
+# in a single SLURM job. Per-language Parakeet+VAD reload each iteration
+# (same trade-off as asr/main.py multilang mode).
+#
+# Per-(lang, split) outputs land at:
+#   <output_dir>/<lang>/<split>/parakeet/parakeet_rank_*.jsonl
+
+# ===== multi-language driver =====
+# One run per language — no per-split iteration. The per-language
+# ``shar_dir`` (``<language_split_dir>/<lang>``) should be either a flat
+# union shar or a unified directory containing every split's shards.
+language_split_dir:        "/capstor/scratch/cscs/sgodey/audio-datasets/SHAR/stage_2/commonvoice22_sidon"
+languages:                 ["en", "es", "fr", "pt", "de", "nl", "it"]
+language_subdir_template:  "{lang}"
+
+# ===== common =====
+# `shar_dir` is ignored when `language_split_dir` is set.
+# `output_dir` becomes the *root* — per-(lang, split) subdirs are appended.
+output_dir:         "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/Result/quality_metrics/commonvoice22_sidon"
+target_sample_rate: 16000
+
+# ===== loader =====
+loader:
+  max_batch_duration: 1200.0
+  num_buckets:        20
+  bucket_buffer_size: 30000
+  decode_num_workers: 16
+  prefetch_factor:    4
+  sampler_shuffle:    true
+  sampler_seed:       42
+  dataloader_timeout: 300
+
+# ===== parakeet (multilingual — same model across all langs) =====
+parakeet:
+  model:                   "nvidia/parakeet-tdt-0.6b-v3"
+  nemo_micro_batch_size:   512
+  dtype:                   "bfloat16"
+  compute_word_timestamps: false
+
+# ===== vad =====
+vad:
+  enabled:        true
+  model:          "nvidia/frame_vad_multilingual_marblenet_v2.0"
+  threshold:      0.5
+  min_speech_ms:  250
+  min_silence_ms: 250
+  skip_if_below:  null
+
+# ===== runner =====
+runner:
+  heartbeat_seconds:  5.0
+  flush_every:        100
+  writer_queue_size:  1024

@@ -1,0 +1,24 @@
+# MOS scoring — VoxPopuli run, de (Phase 1: MOS + dedup, no ASR yet).
+# dataset id = language code (must match dedup dataset_overrides).
+dataset: de
+shar_dir:           "/capstor/store/cscs/swissai/infra01/audio-datasets/SHAR/stage_2/voxpopuli_asr/de"
+output_dir:         "/capstor/scratch/cscs/sgodey/data_selection_runs/voxpopuli/de/quality_mos"
+target_sample_rate: 16000
+unique_output_subdir: false
+fail_fast_oom: true
+max_batch_duration: 1800.0
+num_buckets:        20
+bucket_buffer_size: 10000
+quadratic_duration: 60.0
+decode_num_workers: 16
+prefetch_factor:    4
+truncate_secs:      30.0
+use_utmos:        true
+use_squim:        true
+use_dnsmos:       true
+dnsmos_variant:   "nisqa"
+dnsmos_cache_dir: "/capstor/scratch/cscs/sgodey/data_selection_runs/quality/caches/dnsmos"
+use_audiobox:        true
+audiobox_sub_batch:  128
+use_compile:  false
+use_profiler: false

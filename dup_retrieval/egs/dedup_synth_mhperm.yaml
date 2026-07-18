@@ -1,0 +1,68 @@
+# Synthetic dedup test with the MAIN method (MinHash-perm char-12 + containment).
+# Re-scores recall per family (esp. text_edit = augmented transcript) vs the old
+# char-16-gram. Source: the existing synthetic shar (cv22_synth/en).
+shar_dirs:
+  - /capstor/scratch/cscs/sgodey/dedup_pipeline_test/synthetic_shar/cv22_synth/en
+dataset_overrides:
+  /capstor/scratch/cscs/sgodey/dedup_pipeline_test/synthetic_shar/cv22_synth/en: synth
+output_dir: /capstor/scratch/cscs/sgodey/data_selection_runs/dedup/synth_mhperm/dedup_out
+
+target_sample_rate: 16000
+max_batch_duration: 1500.0
+num_buckets: 20
+bucket_buffer_size: 10000
+decode_num_workers: 8
+prefetch_factor: 4
+truncate_secs: 30.0
+
+manifest:
+  inner_workers: 16
+  min_text_chars: 12          # synthetic is CV (short sentences) — a touch lower than prod's 20
+  drop_empty_text: true
+  strip_punctuation: true
+
+text_dedup:
+  backend: cudf
+  ngram_size: 12
+  num_permutations: 128
+  num_bands: 32
+  band_width: 4
+  similarity: containment
+  containment_threshold: 0.80
+  containment_prefilter: 0.20
+  min_shared: 6
+  small_bucket_threshold: 200
+  max_bucket_size: 10000
+  exact_verify_workers: 64
+  seed: 1
+  save_candidate_edges: true
+  candidate_fraction_max: 0.97   # synthetic is dup-dense by design (most cuts ARE dups)
+
+audio_fingerprint:
+  mel_n_bins: 64
+  mel_f_min: 200
+  mel_f_max: 3000
+  mel_frame_rate: 40
+  hash_frame_rate: 12.5
+  m_frames: 4
+  M_frames: 20
+  time_window: 9
+  energy_factor: 1.0
+  freq_top_k: 3
+  keypoints_per_bin: 2
+  peak_mode: global
+  local_norm_time: 41
+  silence_rel_floor: 0.02
+
+audio_match:
+  min_keypoints: 4
+  match_min_abs: 4
+  match_frac: 0.10
+  min_relative_match: 0.10
+  strong_match_frac: 0.85
+  hist_tolerance: 1
+  small_cluster_max: 200
+  huge_cluster_max: 10000
+  pre_filter_min_shared: 4
+  workers: 16
+  save_match_edges: true

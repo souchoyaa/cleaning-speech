@@ -1,0 +1,90 @@
+joined 5257 cuts (gt=5257)
+
+====================================================================================================
+1. MEAN METRIC VALUE PER AUGMENTATION (lower = the metric judges it worse)
+====================================================================================================
+aug            n    utmos     stoi     pesq   si_sdr   dnsmos       CE       CU       PC       PQ  lowQ
+original    1000     3.46     0.99     3.59    23.90     4.20     5.06     5.95     1.52     6.87     0%
+exact        976     3.46     0.99     3.59    23.85     4.19     5.07     5.96     1.53     6.88     0%
+case         335     3.44     0.99     3.57    23.72     4.18     5.01     5.87     1.53     6.81     0%
+punct        366     3.46     0.99     3.61    24.40     4.18     5.07     5.97     1.53     6.86     0%
+speed        331     3.47     0.99     3.59    24.07     4.17     5.00     5.94     1.53     6.86     0%
+reverb       335     1.32     0.51     1.19    -9.38     1.87     3.88     4.74     1.58     5.73     0%
+text_edit    347     3.45     0.99     3.58    23.95     4.21     5.06     5.96     1.52     6.89     0%
+noise       1276     2.09     0.92     1.40    14.14     2.07     3.77     3.25     2.58     4.04    34%
+clip         291     3.12     0.98     3.44    21.73     3.54     4.12     4.83     1.61     5.40   100%
+
+====================================================================================================
+2. AUROC — separate expect_low_quality (724 cuts: clip + low-SNR noise) from originals (1000)
+   1.00 = metric perfectly ranks clean above degraded; 0.50 = useless; <0.5 = inverted
+====================================================================================================
+  utmos     AUROC = 0.874
+  stoi      AUROC = 0.826
+  pesq      AUROC = 0.836
+  si_sdr    AUROC = 0.845
+  dnsmos    AUROC = 0.946
+  CE        AUROC = 0.916
+  CU        AUROC = 0.923
+  PC        AUROC = 0.094
+  PQ        AUROC = 0.946
+
+  --- AUROC broken down by degradation type (vs originals) ---
+  clip           (n= 291)  utmos=0.69 stoi=0.58 pesq=0.59 si_sdr=0.62 dnsmos=0.87 CE=0.83 CU=0.81 PC=0.23 PQ=0.87 
+  noise(5/12dB)  (n= 433)  utmos=0.99 stoi=0.99 pesq=1.00 si_sdr=0.99 dnsmos=1.00 CE=0.98 CU=1.00 PC=0.00 PQ=1.00 
+  reverb         (n= 335)  utmos=1.00 stoi=1.00 pesq=1.00 si_sdr=1.00 dnsmos=1.00 CE=0.93 CU=0.87 PC=0.33 PQ=0.89 
+  speed          (n= 331)  utmos=0.50 stoi=0.49 pesq=0.50 si_sdr=0.49 dnsmos=0.51 CE=0.53 CU=0.50 PC=0.49 PQ=0.50 
+
+  --- noise AUROC by SNR bucket (vs originals) ---
+  SNR=5.0    (n= 433)  dnsmos=1.00 si_sdr=0.99 pesq=1.00 stoi=0.99 utmos=0.99 PQ=1.00 CE=0.98 
+  SNR=12.0   (n= 425)  dnsmos=0.99 si_sdr=0.96 pesq=1.00 stoi=0.94 utmos=0.96 PQ=1.00 CE=0.93 
+  SNR=20.0   (n= 418)  dnsmos=0.99 si_sdr=0.69 pesq=0.99 stoi=0.69 utmos=0.82 PQ=0.99 CE=0.89 
+
+====================================================================================================
+3. PEARSON CORRELATION BETWEEN METRICS (all cuts) — high |r| => redundant
+====================================================================================================
+           utmos    stoi    pesq  si_sdr  dnsmos      CE      CU      PC      PQ
+utmos       1.00    0.68    0.84    0.80    0.83    0.79    0.75   -0.60    0.72
+stoi        0.68    1.00    0.61    0.89    0.60    0.43    0.30   -0.12    0.28
+pesq        0.84    0.61    1.00    0.78    0.91    0.72    0.81   -0.78    0.82
+si_sdr      0.80    0.89    0.78    1.00    0.72    0.56    0.50   -0.34    0.48
+dnsmos      0.83    0.60    0.91    0.72    1.00    0.73    0.78   -0.79    0.80
+CE          0.79    0.43    0.72    0.56    0.73    1.00    0.87   -0.61    0.82
+CU          0.75    0.30    0.81    0.50    0.78    0.87    1.00   -0.82    0.96
+PC         -0.60   -0.12   -0.78   -0.34   -0.79   -0.61   -0.82    1.00   -0.84
+PQ          0.72    0.28    0.82    0.48    0.80    0.82    0.96   -0.84    1.00
+
+====================================================================================================
+4. COMBINATION STRATEGIES — AUROC for separating degraded (clip+lowSNR noise) from originals
+====================================================================================================
+  dnsmos only                            AUROC = 0.946
+  si_sdr only                            AUROC = 0.845
+  mean z(all 9)                          AUROC = 0.932
+  mean z(dnsmos,sisdr,pesq,utmos)        AUROC = 0.906
+  mean z(dnsmos,sisdr)                   AUROC = 0.924
+  min z(dnsmos,sisdr,pesq,utmos)         AUROC = 0.897
+  min z(all 9)                           AUROC = 0.864
+  min z(dnsmos,sisdr)                    AUROC = 0.908
+
+########## RETENTION (keep-best-copy) ##########
+
+783 families with >=2 members (avg size 6.4)
+
+Scheme: of the kept (top-1) copy per family —
+scheme                                           %kept low-Q %kept clean %kept reverb
+current retention (0.4u+0.3d+0.2aesOVL, raw)            0.1%       99.9%         0.0%
+current but aesOVL w/o PC                               0.0%      100.0%         0.0%
+dnsmos only                                             0.6%       99.4%         0.0%
+PQ only                                                 0.0%       97.6%         2.4%
+z(dnsmos)+z(si_sdr)+z(utmos)+z(pesq)                    0.9%       99.1%         0.0%
+z(dnsmos)+z(si_sdr)                                     0.8%       99.2%         0.0%
+min z(dnsmos,si_sdr,utmos,pesq)                         2.6%       97.4%         0.0%
+
+Restricted to 480 families that contain >=1 low-quality (clip/lowSNR-noise) member:
+scheme                                           %kept low-Q %kept clean
+current retention (0.4u+0.3d+0.2aesOVL, raw)            0.2%       99.8%
+current but aesOVL w/o PC                               0.0%      100.0%
+dnsmos only                                             1.0%       99.0%
+PQ only                                                 0.0%       97.3%
+z(dnsmos)+z(si_sdr)+z(utmos)+z(pesq)                    1.5%       98.5%
+z(dnsmos)+z(si_sdr)                                     1.2%       98.8%
+min z(dnsmos,si_sdr,utmos,pesq)                         4.2%       95.8%
