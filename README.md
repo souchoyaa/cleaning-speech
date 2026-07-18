@@ -32,9 +32,14 @@ retention → apply_to_shar` — driven by one orchestrator (`dup_retrieval/core
 `manifest`, `fingerprint`, and `audio_match` shard across the node's ranks/GPUs;
 `text_dedup` (cuDF, single-GPU) and the retention stages run on rank 0.
 
+Two checkouts are involved: `REPO` is the outer
+[benchmark-audio-tokenizer-w-dedup](https://github.com/souchoyaa/benchmark-audio-tokenizer-w-dedup)
+pipeline (the launch scripts set `PYTHONPATH` to it), and `DS` is **this repo**, placed
+inside it at `audio_tokenization/utils/data_selection` as described above.
+
 ```bash
-REPO=/users/sgodey/home/semester_project/sync-project/benchmark-audio-tokenizer-w-dedup
-DS=$REPO/audio_tokenization/utils/data_selection
+REPO=<path to your benchmark-audio-tokenizer-w-dedup checkout>
+DS=$REPO/audio_tokenization/utils/data_selection   # this repo
 
 # single node (4 ranks / 4 GPUs)
 sbatch --export=ALL,CONFIG=$DS/dup_retrieval/egs/<cfg>.yaml,REPO_DIR=$REPO \
